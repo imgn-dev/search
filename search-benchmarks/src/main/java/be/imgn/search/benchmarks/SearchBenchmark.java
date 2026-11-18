@@ -21,10 +21,12 @@ import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 
 /// Searching an in-memory index of [#DOCUMENTS] [generated documents][GeneratedText] in [#SEGMENTS] segments,
-/// top 10, in microseconds per query.
+/// top [k][#k], in microseconds per query.
 ///
 /// The query shapes, on the body: `rare` and `common` terms, `allCommon` and `anyCommon` of two common terms,
-/// `allMixed` of a middling and a rare term, and `phrase` of two common terms.
+/// `allMixed` of a middling and a rare term, `anyMixed` of a common and a middling term, `phrase` of two common
+/// terms, and `allOfAny` of two common words each searched in the title and the body, the shape of a query-language
+/// query of two words.
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 2)
@@ -35,15 +37,18 @@ public class SearchBenchmark {
 
     private static final int DOCUMENTS = 50_000;
     private static final int SEGMENTS = 5;
-    private static final int K = 10;
+    private static final int TOP_10 = 10;
     // Ranks of the words the queries use.
     private static final int COMMON = 3;
     private static final int OTHER_COMMON = 5;
     private static final int MIDDLING = 200;
     private static final int RARE = 5_000;
 
-    @Param({"rare", "common", "allCommon", "allMixed", "anyCommon", "phrase"})
+    @Param({"rare", "common", "allCommon", "allMixed", "anyCommon", "anyMixed", "phrase", "allOfAny"})
     private String shape = "rare";
+
+    @Param({"10", "1000"})
+    private int k = TOP_10;
 
     private Index index = Index.inMemory(GeneratedText.SCHEMA);
     private Searcher searcher = index.searcher();
@@ -68,7 +73,9 @@ public class SearchBenchmark {
             case "allCommon" -> Query.all(term(text, COMMON), term(text, OTHER_COMMON));
             case "allMixed" -> Query.all(term(text, MIDDLING), term(text, RARE));
             case "anyCommon" -> Query.any(term(text, COMMON), term(text, OTHER_COMMON));
+            case "anyMixed" -> Query.any(term(text, COMMON), term(text, MIDDLING));
             case "phrase" -> Query.phrase("body", text.word(COMMON) + " " + text.word(OTHER_COMMON));
+            case "allOfAny" -> Query.all(everywhere(text, COMMON), everywhere(text, OTHER_COMMON));
             default -> throw new IllegalArgumentException("Unknown shape " + shape);
         };
     }
@@ -81,7 +88,11 @@ public class SearchBenchmark {
 
     @Benchmark
     public List<Hit> search() {
-        return searcher.search(query, K);
+        return searcher.search(query, k);
+    }
+
+    private static Query everywhere(GeneratedText text, int rank) {
+        return Query.any(Query.term("title", text.word(rank)), Query.term("body", text.word(rank)));
     }
 
     private static Query term(GeneratedText text, int rank) {

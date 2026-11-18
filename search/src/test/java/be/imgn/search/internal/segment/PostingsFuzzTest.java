@@ -61,14 +61,32 @@ class PostingsFuzzTest {
             }
             index = expected;
             assertThat(iterator.freq()).as(context).isEqualTo(term.freqs[index]);
-            if (term.positions != null && random.nextInt(3) != 0) {
-                // Some positions only, so that the rest are skipped, or read after a no-op advance.
-                var count = random.nextInt(term.freqs[index] - positionsRead + 1);
-                for (var j = 0; j < count; j++) {
-                    assertThat(iterator.nextPosition()).as(context).isEqualTo(term.positions[index][positionsRead++]);
-                }
+            positionsRead = readPositions(random, iterator, term, index, positionsRead, context);
+        }
+    }
+
+    // Reads all positions at once, some one at a time, or none, so that the rest are skipped or read after a
+    // no-op advance. Returns how many of the document's positions are read.
+    private static int readPositions(
+            Random random, PostingsIterator iterator, Term term, int index, int alreadyRead, String context) {
+        var positions = term.positions;
+        if (positions == null) {
+            return alreadyRead;
+        }
+        var read = alreadyRead;
+        if (read == 0 && random.nextInt(4) == 0) {
+            var all = new int[term.freqs[index]];
+            iterator.readPositions(all);
+            assertThat(all).as(context).containsExactly(positions[index]);
+            return all.length;
+        }
+        if (random.nextInt(3) != 0) {
+            var count = random.nextInt(term.freqs[index] - read + 1);
+            for (var j = 0; j < count; j++) {
+                assertThat(iterator.nextPosition()).as(context).isEqualTo(positions[index][read++]);
             }
         }
+        return read;
     }
 
     private static int target(Random random, Term term, int index, int current) {

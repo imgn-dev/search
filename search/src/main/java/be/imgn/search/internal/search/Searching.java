@@ -8,8 +8,9 @@ import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
-/// Runs a query over a snapshot: every segment is scored exhaustively, document at a time, skipping deleted
-/// documents, into a top-k.
+/// Runs a query over a snapshot: every segment is scored document at a time into a top-k, skipping deleted
+/// documents, and, once the top-k is full, the blocks and documents whose score bounds cannot beat its lowest
+/// score.
 public final class Searching {
 
     private Searching() {}
@@ -34,6 +35,13 @@ public final class Searching {
     /// @return the documents, best first, equal scores in document order
     public static List<ScoredDoc> search(
             Schema schema, Snapshot snapshot, Query query, @Nullable Locale language, int k) {
+        return search(schema, snapshot, query, language, k, true);
+    }
+
+    /// The best documents for a query, skipping the documents that cannot enter the top-k or not: both give the
+    /// same documents and scores.
+    static List<ScoredDoc> search(
+            Schema schema, Snapshot snapshot, Query query, @Nullable Locale language, int k, boolean skip) {
         if (snapshot.maxDoc() == 0) {
             return List.of();
         }
@@ -44,18 +52,30 @@ public final class Searching {
         var top = new TopDocs(Math.min(k, snapshot.maxDoc()));
         for (var i = 0; i < snapshot.segments().size(); i++) {
             var scorer = weight.scorer(i);
-            if (scorer == null) {
-                continue;
-            }
-            var entry = snapshot.segments().get(i);
-            var deletions = entry.deletions();
-            for (var doc = scorer.nextDoc(); doc != DocIterator.NO_MORE_DOCS; doc = scorer.nextDoc()) {
-                if (!deletions.isDeleted(doc)) {
-                    top.collect(entry.base() + doc, scorer.score());
-                }
+            if (scorer != null) {
+                collect(scorer, snapshot.segments().get(i), top, skip);
             }
         }
         return top.results();
+    }
+
+    private static void collect(Scorer scorer, Snapshot.Entry entry, TopDocs top, boolean skip) {
+        var min = top.minCompetitiveScore();
+        if (skip && min > Double.NEGATIVE_INFINITY) {
+            scorer.setMinCompetitiveScore(min);
+        }
+        var deletions = entry.deletions();
+        for (var doc = scorer.nextDoc(); doc != DocIterator.NO_MORE_DOCS; doc = scorer.nextDoc()) {
+            if (deletions.isDeleted(doc)) {
+                continue;
+            }
+            top.collect(entry.base() + doc, scorer.score());
+            var newMin = top.minCompetitiveScore();
+            if (skip && newMin > min) {
+                min = newMin;
+                scorer.setMinCompetitiveScore(min);
+            }
+        }
     }
 
     /// A document of a snapshot and its score.

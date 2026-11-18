@@ -61,18 +61,60 @@ final class PhraseScorer extends Scorer {
 
     @Override
     public int nextDoc() {
-        return next(byCost[0].nextDoc());
+        return skips() ? nextCompetitive() : nextMatching();
     }
 
     @Override
     public int advance(int target) {
+        return skips() ? advanceCompetitive(target) : next(byCost[0].advance(target));
+    }
+
+    @Override
+    int advanceMatching(int target) {
         return next(byCost[0].advance(target));
+    }
+
+    @Override
+    int nextMatching() {
+        return next(byCost[0].nextDoc());
     }
 
     @Override
     float score() {
         float freq = phraseFreq;
         return weight * freq / (freq + lengthTable[segment.norm(field, doc)]);
+    }
+
+    // A phrase occurs at most as often as its rarest word, in documents at least as long as any word's shortest.
+    @Override
+    double maxScore() {
+        var freq = Integer.MAX_VALUE;
+        var norm = 0;
+        for (var term : terms) {
+            freq = Math.min(freq, term.termMaxFreq());
+            norm = Math.max(norm, term.termMinNorm());
+        }
+        return bound(weight, freq, lengthTable[norm]);
+    }
+
+    @Override
+    int advanceShallow(int target) {
+        var upTo = NO_MORE_DOCS;
+        for (var term : terms) {
+            upTo = Math.min(upTo, term.advanceShallow(target));
+        }
+        return upTo;
+    }
+
+    @Override
+    double maxScoreUpTo(int upTo) {
+        var freq = Integer.MAX_VALUE;
+        var norm = 0;
+        for (var term : terms) {
+            freq = Math.min(freq, term.maxFreq(upTo));
+            norm = Math.max(norm, term.minNorm(upTo));
+        }
+        return bound(weight, freq, lengthTable[norm]);
     }
 
     private int next(int candidate) {
@@ -98,9 +140,7 @@ final class PhraseScorer extends Scorer {
             if (positions[i].length < freq) {
                 positions[i] = new int[Math.max(freq, positions[i].length * 2)];
             }
-            for (var j = 0; j < freq; j++) {
-                positions[i][j] = terms[i].nextPosition();
-            }
+            terms[i].readPositions(positions[i]);
             counts[i] = freq;
             cursors[i] = 0;
         }

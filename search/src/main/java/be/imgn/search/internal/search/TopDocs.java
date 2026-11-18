@@ -29,6 +29,11 @@ final class TopDocs {
         }
     }
 
+    /// The lowest score a document must beat to enter: the worst kept once full, minus infinity before.
+    double minCompetitiveScore() {
+        return size == docs.length ? scores[0] : Double.NEGATIVE_INFINITY;
+    }
+
     /// The documents kept, best first.
     List<Searching.ScoredDoc> results() {
         var results = new Searching.ScoredDoc[size];

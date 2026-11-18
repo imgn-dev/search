@@ -4,17 +4,20 @@ import static be.imgn.search.internal.codec.BitPacking.BLOCK;
 
 import be.imgn.search.internal.codec.BitPacking;
 import be.imgn.search.internal.codec.Layouts;
+import be.imgn.search.internal.codec.Norms;
 import java.lang.foreign.MemorySegment;
 
 /// Iterates over the postings of a term, and over its positions in each document, as [PostingsWriter] wrote them.
 ///
 /// It decodes a block of documents at a time into reusable arrays, finds blocks through the skip table, and
-/// reads positions only when asked for them. One instance serves term after term through [#reset], so a search
-/// reuses it across segments. Not thread-safe.
+/// reads positions only when asked for them. It also gives the score bounds of its blocks, highest frequency and
+/// lowest norm, straight from the skip table, without decoding them or moving. One instance serves term after term
+/// through [#reset], so a search reuses it across segments. Not thread-safe.
 public final class PostingsIterator implements DocIterator {
 
     private static final int SEVEN_BITS = 0x7F;
     private static final int CONTINUATION = 0x80;
+    private static final int BYTE_MASK = 0xFF;
     private static final int PAYLOAD_BITS = 7;
 
     private final int[] docs = new int[BLOCK];
@@ -34,6 +37,10 @@ public final class PostingsIterator implements DocIterator {
     private long nextBlockOffset;
     private int doc;
     private long cursor;
+    // The block bounds: the term's, and the block that holds the last target given to advanceShallow.
+    private int termMaxFreq;
+    private int termMinNorm;
+    private int shallowBlock;
 
     private long positionsStart;
     private long totalTermFreq;
@@ -65,6 +72,9 @@ public final class PostingsIterator implements DocIterator {
         this.bufferLength = 0;
         this.nextBlockOffset = blocksStart;
         this.doc = -1;
+        this.termMaxFreq = term.maxFreq();
+        this.termMinNorm = term.minNorm();
+        this.shallowBlock = 0;
         this.totalTermFreq = term.totalTermFreq();
         this.fullPositionsEnd = totalTermFreq / BLOCK * BLOCK;
         this.positionsStart = positionsBase < 0 ? -1 : positionsBase + term.positionsOffset();
@@ -155,6 +165,109 @@ public final class PostingsIterator implements DocIterator {
         return lastPosition;
     }
 
+    /// Reads every position of the term in the current document at once, as [#nextPosition()] would one at a
+    /// time; then no position is left to read in that document. Only valid when the iterator was reset with the
+    /// positions, and before any [#nextPosition()] in the document.
+    ///
+    /// @param positions the receiver, with room for [#freq()] positions
+    public void readPositions(int[] positions) {
+        var freq = freqs[bufferUpto];
+        var index = docPositionStart;
+        var position = 0;
+        var read = 0;
+        while (read < freq) {
+            fillPositions(index);
+            var from = (int) (index - positionBufferStart);
+            var count = Math.min(freq - read, positionBufferLength - from);
+            for (var i = 0; i < count; i++) {
+                position += positionBuffer[from + i];
+                positions[read + i] = position;
+            }
+            read += count;
+            index += count;
+        }
+        positionsRead = freq;
+        lastPosition = position;
+    }
+
+    /// The highest frequency of the term in any document.
+    ///
+    /// @return the frequency
+    public int termMaxFreq() {
+        return termMaxFreq;
+    }
+
+    /// The lowest norm of a document that has the term.
+    ///
+    /// @return the norm
+    public int termMinNorm() {
+        return termMinNorm;
+    }
+
+    /// Finds the block that holds `target` in the skip table, for [#maxFreq] and [#minNorm], without decoding
+    /// anything or moving the iterator.
+    ///
+    /// @param target a document number
+    /// @return the last document of that block, at least `target`; [#NO_MORE_DOCS] if the term has no skip table,
+    ///     whose one block then spans every document, or no document at or after `target`
+    public int advanceShallow(int target) {
+        if (blockCount <= 1) {
+            shallowBlock = 0;
+            return NO_MORE_DOCS;
+        }
+        var low = 0;
+        var high = blockCount - 1;
+        var found = blockCount;
+        while (low <= high) {
+            var middle = (low + high) >>> 1;
+            if (lastDoc(middle) >= target) {
+                found = middle;
+                high = middle - 1;
+            } else {
+                low = middle + 1;
+            }
+        }
+        shallowBlock = found;
+        return found == blockCount ? NO_MORE_DOCS : lastDoc(found);
+    }
+
+    /// The highest frequency in the blocks from the one [#advanceShallow] found to the one that holds `upTo`.
+    ///
+    /// @param upTo the last document of the range
+    /// @return the frequency, 0 if the range has no block
+    public int maxFreq(int upTo) {
+        if (blockCount <= 1) {
+            return termMaxFreq;
+        }
+        var max = 0;
+        for (var block = shallowBlock; block < blockCount; block++) {
+            var entry = skipStart + (long) block * PostingsWriter.SKIP_ENTRY_SIZE;
+            max = Math.max(max, data.get(Layouts.INT, entry + PostingsWriter.SKIP_MAX_FREQ));
+            if (lastDoc(block) >= upTo) {
+                break;
+            }
+        }
+        return max;
+    }
+
+    /// The lowest norm in the blocks from the one [#advanceShallow] found to the one that holds `upTo`.
+    ///
+    /// @param upTo the last document of the range
+    /// @return the norm, [Norms#MAX] if the range has no block
+    public int minNorm(int upTo) {
+        if (blockCount <= 1) {
+            return termMinNorm;
+        }
+        var min = Norms.MAX;
+        for (var block = shallowBlock; block < blockCount; block++) {
+            var entry = skipStart + (long) block * PostingsWriter.SKIP_ENTRY_SIZE;
+            min = Math.min(min, data.get(Layouts.BYTE, entry + PostingsWriter.SKIP_MIN_NORM) & BYTE_MASK);
+            if (lastDoc(block) >= upTo) {
+                break;
+            }
+        }
+        return min;
+    }
     // The first block, after the current one, whose last document is at least target, or blockCount.
     private int findBlock(int target) {
         var low = blockIndex + 1;
@@ -234,6 +347,12 @@ public final class PostingsIterator implements DocIterator {
     }
 
     private int position(long index) {
+        fillPositions(index);
+        return positionBuffer[(int) (index - positionBufferStart)];
+    }
+
+    // Makes the position buffer hold the position of that index among the term's.
+    private void fillPositions(long index) {
         if (index < positionBufferStart || index >= positionBufferStart + positionBufferLength) {
             while (nextPositionBlockStart + BLOCK <= index && nextPositionBlockStart < fullPositionsEnd) {
                 var width = data.get(Layouts.BYTE, nextPositionBlockOffset);
@@ -254,7 +373,6 @@ public final class PostingsIterator implements DocIterator {
             }
             nextPositionBlockStart += positionBufferLength;
         }
-        return positionBuffer[(int) (index - positionBufferStart)];
     }
 
     private int readVInt() {
