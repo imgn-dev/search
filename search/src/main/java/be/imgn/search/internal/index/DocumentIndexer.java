@@ -78,13 +78,13 @@ final class DocumentIndexer {
         return definitions.stream().map(Schema.FieldDefinition::name).toList();
     }
 
-    /// Analyses a document, which the schema has checked, into the buffer.
+    /// Writes the document last [analysed][#analyze] into a buffer.
     ///
-    /// The document is analysed into this indexer's scratch first, and reaches the buffer only once that
-    /// succeeded: an analyzer or detector that throws leaves the buffer as it was.
-    void index(Document document, DocumentBuffer buffer) {
-        analyze(document);
-        var doc = buffer.newDocument(document.key());
+    /// @param key the document's key
+    /// @param seq the sequence number of its add
+    /// @param buffer the buffer
+    void write(String key, long seq, DocumentBuffer buffer) {
+        var doc = buffer.newDocument(key, seq);
         fields.clear();
         for (var slot : slots) {
             var definition = definitions.get(slot.ordinal());
@@ -109,7 +109,9 @@ final class DocumentIndexer {
         buffer.stored(record);
     }
 
-    private void analyze(Document document) {
+    /// Analyses a document, which the schema has checked, into this indexer's scratch, from which [#write] copies
+    /// it into a buffer: an analyzer or detector that throws leaves every buffer as it was.
+    void analyze(Document document) {
         var documentLanguage = documentLanguage(document);
         Arrays.fill(nextPositions, 0);
         Arrays.fill(lengths, 0);

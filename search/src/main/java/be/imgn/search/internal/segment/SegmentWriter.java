@@ -3,6 +3,7 @@ package be.imgn.search.internal.segment;
 import be.imgn.search.internal.codec.ByteOutput;
 import be.imgn.search.internal.codec.Format;
 import be.imgn.search.internal.codec.IntSorter;
+import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -128,6 +129,14 @@ public final class SegmentWriter {
     /// @param length the number of bytes
     public void addStored(byte[] record, int offset, int length) {
         stored.add(record, offset, length);
+    }
+
+    /// Adds the stored records of the next documents as a block of another segment, still compressed.
+    ///
+    /// @param raw the block, as [StoredFieldsReader#rawBlock] gives it
+    /// @param count the number of documents of the block
+    public void addStoredBlock(MemorySegment raw, int count) {
+        stored.addBlock(raw, count);
     }
 
     /// Writes the segment.

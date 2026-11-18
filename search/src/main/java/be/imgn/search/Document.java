@@ -16,6 +16,10 @@ import org.jspecify.annotations.Nullable;
 ///
 /// A document read back from an index is a [StoredDocument], a different type: it holds only the stored fields.
 ///
+/// Keys and keyword values must be well-formed UTF-16, without a lone surrogate: they are stored and compared as
+/// UTF-8, where a lone surrogate has no encoding, so two keys differing only by one would collide. Text values may
+/// have them: analysis treats them as separators.
+///
 /// @param key the key, unique in the index: adding a document whose key exists replaces it
 /// @param language the language of the text values that give none, or `null` to detect it
 /// @param fields the fields, in order
@@ -25,10 +29,12 @@ public record Document(String key, @Nullable Locale language, List<Field> fields
     /// Checks the document, copies the fields and normalizes the language.
     ///
     /// @throws NullPointerException if `key`, `fields` or one of them is `null`
-    /// @throws IllegalArgumentException if `key` is empty, or `language` has no language subtag
+    /// @throws IllegalArgumentException if `key` is empty or not well-formed UTF-16, or `language` has no language
+    ///     subtag
     public Document {
         requireNonNull(key, "key");
         checkArgument(!key.isEmpty(), "A document key cannot be empty");
+        checkWellFormed(key, "A document key");
         language = Languages.normalizeNullable(language);
         fields = List.copyOf(fields);
     }
@@ -38,11 +44,21 @@ public record Document(String key, @Nullable Locale language, List<Field> fields
     /// @param key the document's key, unique in the index
     /// @return a new builder
     /// @throws NullPointerException if `key` is `null`
-    /// @throws IllegalArgumentException if `key` is empty
+    /// @throws IllegalArgumentException if `key` is empty or not well-formed UTF-16
     public static Builder builder(String key) {
         requireNonNull(key, "key");
         checkArgument(!key.isEmpty(), "A document key cannot be empty");
+        checkWellFormed(key, "A document key");
         return new Builder(key);
+    }
+
+    // Throws if a string has a lone surrogate, which a code point stream gives as is.
+    static void checkWellFormed(String value, String what) {
+        checkArgument(
+                value.codePoints().noneMatch(c -> c >= Character.MIN_SURROGATE && c <= Character.MAX_SURROGATE),
+                "%s has a lone surrogate: %s",
+                what,
+                value);
     }
 
     /// A value of a field.
@@ -90,9 +106,11 @@ public record Document(String key, @Nullable Locale language, List<Field> fields
         /// Checks the value.
         ///
         /// @throws NullPointerException if an argument is `null`
+        /// @throws IllegalArgumentException if `value` is not well-formed UTF-16
         public Keyword {
             requireNonNull(name, "name");
             requireNonNull(value, "value");
+            checkWellFormed(value, "A keyword");
         }
     }
 
@@ -151,6 +169,7 @@ public record Document(String key, @Nullable Locale language, List<Field> fields
         /// @param value the keyword
         /// @return this builder
         /// @throws NullPointerException if an argument is `null`
+        /// @throws IllegalArgumentException if `value` is not well-formed UTF-16
         public Builder keyword(String name, String value) {
             fields.add(new Keyword(name, value));
             return this;

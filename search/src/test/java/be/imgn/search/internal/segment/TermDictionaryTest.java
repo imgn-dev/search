@@ -72,6 +72,47 @@ class TermDictionaryTest {
         assertThat(lookup(dictionary, "a", new long[COLUMNS])).isFalse();
     }
 
+    @Test
+    void walksTheTermsInOrderWithTheirValues() {
+        var terms = terms();
+        var cursor = write(terms).cursor();
+
+        for (var i = 0; i < terms.size(); i++) {
+            assertThat(cursor.next()).isTrue();
+            assertThat(new String(cursor.term(), 0, cursor.length(), StandardCharsets.UTF_8))
+                    .isEqualTo(terms.get(i));
+            assertThat(cursor.values()).containsExactly(i % 7, 1000L * i);
+        }
+        assertThat(cursor.next()).isFalse();
+        assertThat(write(List.of()).cursor().next()).isFalse();
+    }
+
+    @Test
+    void seeksForwardToPresentAndAbsentTerms() {
+        var terms = terms();
+        var cursor = write(terms).cursor();
+        var targets = new ArrayList<String>();
+        for (var i = 0; i < 1000; i += 2) {
+            targets.add(String.format(Locale.ROOT, "term-%04d", i));
+        }
+        targets.add("zzz");
+
+        for (var target : targets) {
+            var bytes = target.getBytes(StandardCharsets.UTF_8);
+            var index = terms.indexOf(target);
+
+            assertThat(cursor.seek(Arrays.copyOf(bytes, bytes.length + 3), bytes.length))
+                    .as(target)
+                    .isEqualTo(index >= 0);
+            if (index >= 0) {
+                assertThat(cursor.values()).containsExactly(index % 7, 1000L * index);
+            }
+        }
+        var fresh = write(terms).cursor();
+        assertThat(fresh.seek(new byte[] {'a'}, 1)).isFalse();
+        assertThat(fresh.seek("term-0999".getBytes(StandardCharsets.UTF_8), 9)).isTrue();
+    }
+
     // Many blocks of shared prefixes: term-0000 to term-0999 every 3rd.
     private static List<String> terms() {
         var terms = new ArrayList<String>();

@@ -10,8 +10,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /// Analysed documents not yet written into a segment: their keys, the terms and postings of each internal field,
-/// the field lengths and the stored records. A document replaced or deleted while in the buffer is marked, and
-/// dropped when the buffer becomes a segment. Not thread-safe.
+/// the field lengths, the stored records and the sequence number of each document's add. A document that a later
+/// operation replaced or deleted is marked before the buffer becomes a segment, and dropped. Not thread-safe.
 final class DocumentBuffer {
 
     private static final int INITIAL_DOCUMENTS = 64;
@@ -20,10 +20,10 @@ final class DocumentBuffer {
     private final ByteBlockPool bytes = new ByteBlockPool();
     private final IntBlockPool ints = new IntBlockPool();
     private final Map<String, FieldBuffer> fields = new HashMap<>();
-    private final Map<String, Integer> docsByKey = new HashMap<>();
     private final BitSet deleted = new BitSet();
     private final ByteOutput stored = new ByteOutput();
     private String[] keys = new String[INITIAL_DOCUMENTS];
+    private long[] seqs = new long[INITIAL_DOCUMENTS];
     private int[] storedEnds = new int[INITIAL_DOCUMENTS];
     private int docCount;
     private long keyBytes;
@@ -34,6 +34,10 @@ final class DocumentBuffer {
 
     String key(int doc) {
         return keys[doc];
+    }
+
+    long seq(int doc) {
+        return seqs[doc];
     }
 
     boolean isDeleted(int doc) {
@@ -48,30 +52,27 @@ final class DocumentBuffer {
         return new ArrayList<>(fields.values());
     }
 
-    /// Starts a document, replacing the buffered one with the same key.
+    /// Starts a document.
     ///
+    /// @param key the document's key
+    /// @param seq the sequence number of its add
     /// @return the document's number in the buffer
-    int newDocument(String key) {
+    int newDocument(String key, long seq) {
         var doc = docCount++;
         if (doc == keys.length) {
             keys = Arrays.copyOf(keys, doc * 2);
             storedEnds = Arrays.copyOf(storedEnds, doc * 2);
+            seqs = Arrays.copyOf(seqs, doc * 2);
         }
         keys[doc] = key;
-        var previous = docsByKey.put(key, doc);
-        if (previous != null) {
-            deleted.set(previous);
-        }
+        seqs[doc] = seq;
         keyBytes += key.length() * 2L + OBJECT_OVERHEAD;
         return doc;
     }
 
-    /// Deletes the buffered document with that key, if any.
-    void delete(String key) {
-        var doc = docsByKey.remove(key);
-        if (doc != null) {
-            deleted.set(doc);
-        }
+    /// Marks a document replaced or deleted, to drop it.
+    void drop(int doc) {
+        deleted.set(doc);
     }
 
     /// The buffer of a neutral text field or a keyword field, created on first use.
@@ -117,7 +118,7 @@ final class DocumentBuffer {
     /// An estimate of the heap the buffer takes.
     long bytesUsed() {
         var used = bytes.bytesUsed() + ints.bytesUsed() + stored.array().length + keyBytes;
-        used += (long) (keys.length + storedEnds.length) * Integer.BYTES;
+        used += (long) (keys.length + storedEnds.length) * Integer.BYTES + (long) seqs.length * Long.BYTES;
         for (var field : fields.values()) {
             used += field.bytesUsed();
         }

@@ -148,6 +148,27 @@ public final class Segment {
         return keyDictionary.lookup(key, length, values) ? (int) values[0] : -1;
     }
 
+    /// The keys in increasing order of their bytes, each with its document as its one value.
+    ///
+    /// @return a cursor before the first key
+    public TermDictionary.Cursor keys() {
+        return keyDictionary.cursor();
+    }
+
+    /// The stored fields, to copy them in a merge.
+    ///
+    /// @return the reader
+    public StoredFieldsReader storedFields() {
+        return stored;
+    }
+
+    /// The size of the segment.
+    ///
+    /// @return the number of bytes
+    public long byteSize() {
+        return data.byteSize();
+    }
+
     /// The stored record of a document.
     ///
     /// @param doc the document

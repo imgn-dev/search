@@ -279,6 +279,32 @@ class WriterTest {
     }
 
     @Test
+    void splitsTextAtALoneSurrogateAndRejectsKeysWithOne() throws IOException {
+        try (var index = Index.inMemory(SCHEMA)) {
+            try (var writer = index.writer()) {
+                writer.add(document("a", "fox\uD800dog\uDC00"));
+                assertThatThrownBy(() -> writer.delete("x\uD800")).isInstanceOf(IllegalArgumentException.class);
+            }
+
+            assertThat(keys(index, "fox")).containsExactly("a");
+            assertThat(keys(index, "dog")).containsExactly("a");
+        }
+    }
+
+    @Test
+    void rejectsABudgetThatIsNotPositive() throws IOException {
+        try (var index = Index.inMemory(SCHEMA)) {
+            assertThatThrownBy(() -> index.writer(0)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> index.writer(-1)).isInstanceOf(IllegalArgumentException.class);
+            try (var writer = index.writer(1)) {
+                writer.add(document("a", "fox"));
+                writer.add(document("b", "fox"));
+            }
+            assertThat(keys(index, "fox")).containsExactly("a", "b");
+        }
+    }
+
+    @Test
     void givesOneWriterAtATime() throws IOException {
         try (var index = Index.inMemory(SCHEMA)) {
             var writer = index.writer();

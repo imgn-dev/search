@@ -1,6 +1,8 @@
 package be.imgn.search.internal.segment;
 
 import be.imgn.search.internal.codec.ByteOutput;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.util.Arrays;
 import java.util.zip.Deflater;
 
@@ -49,6 +51,22 @@ public final class StoredFieldsWriter {
         if (records.size() >= BLOCK_SIZE) {
             flush();
         }
+    }
+
+    /// Adds a block of another segment as it is, still compressed, after closing the current block.
+    ///
+    /// @param raw the block, as [StoredFieldsReader#rawBlock] gives it
+    /// @param count the number of documents of the block
+    public void addBlock(MemorySegment raw, int count) {
+        if (blockDocuments > 0) {
+            flush();
+        }
+        index.writeInt(documents);
+        index.writeLong(out.size());
+        var bytes = raw.toArray(ValueLayout.JAVA_BYTE);
+        out.writeBytes(bytes, 0, bytes.length);
+        documents += count;
+        blockCount++;
     }
 
     /// Writes the last block and the index.

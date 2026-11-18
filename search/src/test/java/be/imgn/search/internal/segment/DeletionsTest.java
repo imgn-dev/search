@@ -24,6 +24,27 @@ class DeletionsTest {
     }
 
     @Test
+    void keepsEveryGenerationAcrossPages() {
+        var maxDoc = 200_000;
+        var first = Deletions.NONE.with(new int[] {5, 40_000, 199_999}, 3, maxDoc);
+        var second = first.with(new int[] {40_001, 100_000}, 2, maxDoc);
+        var third = second.with(new int[] {6}, 1, maxDoc);
+
+        assertThat(first.count()).isEqualTo(3);
+        assertThat(second.count()).isEqualTo(5);
+        assertThat(third.count()).isEqualTo(6);
+        for (var doc = 0; doc < maxDoc; doc++) {
+            assertThat(first.isDeleted(doc)).isEqualTo(doc == 5 || doc == 40_000 || doc == 199_999);
+            assertThat(second.isDeleted(doc)).isEqualTo(first.isDeleted(doc) || doc == 40_001 || doc == 100_000);
+            assertThat(third.isDeleted(doc)).isEqualTo(second.isDeleted(doc) || doc == 6);
+        }
+        var decoded = Deletions.decode(MemorySegment.ofArray(third.encode(maxDoc)));
+        assertThat(decoded.count()).isEqualTo(6);
+        assertThat(decoded.isDeleted(100_000)).isTrue();
+        assertThat(decoded.isDeleted(100_001)).isFalse();
+    }
+
+    @Test
     void roundTripsThroughBytes() {
         var deletions = Deletions.NONE.with(new int[] {0, 63, 64, 129}, 4, 130);
 

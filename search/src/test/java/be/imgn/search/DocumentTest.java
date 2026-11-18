@@ -3,6 +3,7 @@ package be.imgn.search;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +27,22 @@ class DocumentTest {
                         new Document.Text("title", "The fox", Locale.ENGLISH),
                         new Document.Keyword("tags", "animal"),
                         new Document.Keyword("tags", "forêt"));
+    }
+
+    @Test
+    void rejectsKeysAndKeywordsWithALoneSurrogate() {
+        for (var value : List.of("x\uD800", "x\uDC00", "\uDC00\uD800x")) {
+            assertThatThrownBy(() -> Document.builder(value)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new Document(value, null, List.of())).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new Document.Keyword("tags", value)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> Document.builder("1").keyword("tags", value))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        var paired = "x\uD83E\uDD8A";
+        assertThat(Document.builder(paired).keyword("tags", paired).build().key())
+                .isEqualTo(paired);
+        assertThat(Document.builder("1").text("title", "x\uD800").build().fields())
+                .hasSize(1);
     }
 
     @Test

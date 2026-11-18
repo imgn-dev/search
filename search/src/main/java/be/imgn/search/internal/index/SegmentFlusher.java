@@ -11,19 +11,23 @@ import java.util.zip.Deflater;
 import org.jspecify.annotations.Nullable;
 
 /// Turns a [DocumentBuffer] into a segment, dropping the documents replaced or deleted while buffered. Not
-/// thread-safe: it reuses its arrays from one buffer to the next.
+/// thread-safe: it reuses its arrays from one buffer to the next, and its compressor, which [#end()] releases.
 final class SegmentFlusher {
 
     private static final int INITIAL_TERM_BYTES = 256;
 
-    private final Deflater deflater;
+    private final Deflater deflater = new Deflater(Deflater.BEST_SPEED);
     private final List<String> storedFields;
     private final TermPostings postings = new TermPostings();
     private byte[] term = new byte[INITIAL_TERM_BYTES];
 
-    SegmentFlusher(Deflater deflater, List<String> storedFields) {
-        this.deflater = deflater;
+    SegmentFlusher(List<String> storedFields) {
         this.storedFields = storedFields;
+    }
+
+    /// Releases the compressor.
+    void end() {
+        deflater.end();
     }
 
     /// Writes a segment of the buffer's live documents.
