@@ -19,7 +19,8 @@ public sealed interface Query {
     ///
     /// @param field the field's name
     /// @param text the text, analysed as the field's values are; when it gives several words, they must follow
-    ///     each other in a field that keeps positions, and all appear elsewhere
+    ///     each other in a field that keeps positions, and all appear elsewhere, and only the neutral field is
+    ///     searched, never its language variant
     /// @return the query
     /// @throws NullPointerException if an argument is `null`
     static Query term(String field, String text) {

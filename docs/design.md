@@ -354,8 +354,8 @@ pool per searcher. It must be closed, which releases its references to the files
 Queries:
 
 - `term(field, text)`: the text goes through the field's analysis; when it gives several tokens, they form a
-  phrase on a neutral field that keeps positions and an `all` elsewhere; when it gives none, the term is
-  dropped from its parent query;
+  phrase on a neutral field that keeps positions and an `all` elsewhere, searched in the neutral field only,
+  as phrases are; when it gives none, the term is dropped from its parent query;
 - `phrase(field, text)`: consecutive positions, on text fields that keep them; on a keyword field, the text
   is one term;
 - `all(...)`, `any(...)`: boolean combinations; one whose children were all dropped matches nothing;
@@ -365,7 +365,8 @@ Queries:
 drops positions, throws `IllegalArgumentException`.
 
 `search(query, k)` searches the neutral fields. `search(language, query, k)` also searches, for each text
-field, the language's field; for a language without an analyzer it is `search(query, k)`.
+field, the language's field, for the terms that give one token; for a language without an analyzer it is
+`search(query, k)`.
 
 ### Scoring
 
