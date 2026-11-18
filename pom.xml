@@ -34,4 +34,22 @@
     <tag>HEAD</tag>
   </scm>
 
+  <modules>
+    <module>search</module>
+  </modules>
+
+  <properties>
+    <gaia.version>0.1.2</gaia.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>be.imgn.gaia</groupId>
+        <artifactId>gaia-core</artifactId>
+        <version>${gaia.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
 </project>
