@@ -93,6 +93,86 @@ public final class Schema {
         return languageThreshold;
     }
 
+    /// Parses a query written in the query language, strictly: for queries written by developers or in
+    /// configuration. [#parseLenient] reads a search box.
+    ///
+    /// ```
+    /// renard "le renard" title:fox tags:animal -brouillon (chat OR chien)
+    /// ```
+    ///
+    /// The language builds [Query] objects and nothing they cannot express:
+    ///
+    /// | Syntax | Query |
+    /// |---|---|
+    /// | `word` | [Query#term] in each default field, combined with [Query#any] |
+    /// | `"some words"` | [Query#phrase] in each default field that can answer it, combined with [Query#any] |
+    /// | `field:word`, `field:"some words"` | A term or a phrase in that field only |
+    /// | `a b`, `a AND b` | [Query#all]: a space means AND |
+    /// | `a OR b` | [Query#any] |
+    /// | `-a`, `NOT a` | [Query#not] |
+    /// | `( … )` | Grouping |
+    /// | `\` | Escapes the next character, which is then read as text |
+    ///
+    /// Its grammar, where `NOT` binds tighter than `AND`, which binds tighter than `OR`:
+    ///
+    /// ```
+    /// query       = [ disjunction ]
+    /// disjunction = conjunction { "OR" conjunction }
+    /// conjunction = unary { [ "AND" ] unary }
+    /// unary       = { "NOT" | "-" } primary
+    /// primary     = "(" disjunction ")" | [ field ":" ] ( word | phrase )
+    /// ```
+    ///
+    /// - `AND`, `OR` and `NOT` are operators in capitals only, as whole words: `and`, `or` and `not` are words.
+    /// - `-` is an operator only at the start of a word, directly followed by what it excludes: `e-mail` is a
+    ///   word. The word right after it is never an operator: `-AND` excludes the word `and`.
+    /// - `name:` starts a field only when this schema declares `name`: `12:30` is a word. What follows it is a
+    ///   word or a phrase, never an operator.
+    /// - Words end at a space, a parenthesis or a quote, unless escaped; `\"` and `\\` escape inside a phrase.
+    /// - A phrase is searched in the default text fields that keep positions, and in the default keyword fields,
+    ///   where the quoted text is one term.
+    /// - An `all` or `any` of one query is that query, so `(a)` is `a`, and a word is a plain [Query#term]
+    ///   when it has one field to search.
+    /// - A word or a phrase whose text gives no term in any of its fields, such as `!!!`, is dropped, and so is
+    ///   a part of the query left with nothing to search. A query left with nothing to search matches nothing:
+    ///   it is `any(term(field, ""))` on the first field of this schema, which matches nothing even inside an
+    ///   `all`. So is an empty query.
+    /// - A part of the query made only of exclusions, such as `-a`, or `-b` in `x OR -b`, would match nothing
+    ///   on its own: it is an error.
+    /// - Parentheses nest at most 100 deep.
+    ///
+    /// @param text the query
+    /// @return the query
+    /// @throws NullPointerException if `text` is `null`
+    /// @throws QuerySyntaxException if `text` is not valid: an unclosed quote or parenthesis, a `)` that closes
+    ///     none, empty parentheses, an operator missing a query on one side, a field with nothing after it, a
+    ///     trailing `\`, a part made only of exclusions, a phrase in a field that drops positions or when no
+    ///     default field keeps them, a word or phrase without a field when this schema has no default fields,
+    ///     or parentheses nested too deep
+    public Query parse(String text) {
+        requireNonNull(text, "text");
+        return QueryParser.parse(this, text, true);
+    }
+
+    /// Parses a query written in the query language, leniently: for a search box shown to end users. It reads
+    /// the language as [#parse] does, but never fails:
+    ///
+    /// - A character that would be an error is read as text: an unclosed quote or parenthesis, a `)` that
+    ///   closes none, parentheses nested too deep, an operator missing a query on one side, a field with
+    ///   nothing after it, and a trailing `\`. So `a OR` searches the words `a` and `or`.
+    /// - A part that cannot match is dropped: a part made only of exclusions (`x OR -b` is `x`, and `-a`
+    ///   matches nothing), empty parentheses, and a word or phrase without a field when this schema has no
+    ///   default fields.
+    /// - A phrase that no field of it keeps positions for searches its words instead, as a [Query#term] does.
+    ///
+    /// @param text the query
+    /// @return the query
+    /// @throws NullPointerException if `text` is `null`
+    public Query parseLenient(String text) {
+        requireNonNull(text, "text");
+        return QueryParser.parse(this, text, false);
+    }
+
     /// Checks that `document` fits this schema: every field declared, and of the declared kind.
     ///
     /// @throws IllegalArgumentException if a field of `document` is not declared, or is of another kind

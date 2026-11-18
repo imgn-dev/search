@@ -416,29 +416,40 @@ renard "le renard" title:fox tags:animal -brouillon (chat OR chien)
 | Syntax | Meaning |
 |---|---|
 | `word` | A term, searched in each default field: an `any` of `term(field, word)` |
-| `"some words"` | A phrase, searched in each default field that keeps positions |
+| `"some words"` | A phrase, searched in each default field that keeps positions; one term in a default keyword field |
 | `field:word`, `field:"some words"` | A term or a phrase in that field only |
 | `a b`, `a AND b` | Both: a space means AND |
 | `a OR b` | Either |
 | `-a`, `NOT a` | Not `a` |
-| `( … )` | Grouping |
+| `( … )` | Grouping, at most 100 deep |
 | `\` | Escapes the next character |
 
 - `NOT` binds tighter than `AND`, which binds tighter than `OR`.
 - `AND`, `OR` and `NOT` are operators in capitals only: `and`, `or` and `not` are words.
-- `-` is an operator only at the start of a word: `e-mail` is a word.
-- `name:` starts a field only when the schema declares `name`: `12:30` is a word.
+- `-` is an operator only at the start of a word, directly followed by what it excludes: `e-mail` is a word.
+  The word right after it is never an operator: `-AND` excludes the word `and`.
+- `name:` starts a field only when the schema declares `name`: `12:30` is a word. What follows it is a word or
+  a phrase, never an operator.
+- An `all` or `any` of one query is that query: `(a)` is `a`, and a word is a plain `term` when it has one field
+  to search.
+- A word or phrase whose text gives no term in any of its fields, such as `!!!`, is dropped, and so is a part
+  left with nothing to search: `hello !!!` searches `hello`. Without that, the `any` of its dropped terms would
+  match nothing, and so would its whole conjunction.
 - A part of the query made only of exclusions matches nothing on its own: `x OR -b` is `x`, and `-a` alone
   matches nothing.
-- A query that is left with nothing to match, such as `!!!`, matches nothing.
+- A query that is left with nothing to match, such as `!!!` or an empty query, matches nothing: it parses to
+  `any(term(field, ""))` on the schema's first field, which matches nothing even inside an `all`.
 
 Parsing needs the schema, for the default fields and the field kinds:
 
-- `schema.parse(text)` is strict: a syntax error, a phrase where no field keeps positions, or a part made only
-  of exclusions throws `QuerySyntaxException`, which gives the character position. For queries written by
-  developers or in configuration.
+- `schema.parse(text)` is strict: a syntax error, a phrase where no field keeps positions, a word or phrase
+  without a field when the schema has no default fields, or a part made only of exclusions throws
+  `QuerySyntaxException`, which gives the character position. For queries written by developers or in
+  configuration.
 - `schema.parseLenient(text)` never throws: a character that would be an error is read as text, and a part
-  that cannot match is dropped. For a search box shown to end users.
+  that cannot match is dropped, a word without a field when the schema has no default fields included. A
+  phrase that no field keeps positions for searches its words, as a `term` does. For a search box shown to end
+  users.
 
 ## Performance
 
