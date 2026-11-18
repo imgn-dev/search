@@ -1,6 +1,7 @@
 package be.imgn.search.internal.segment;
 
 import be.imgn.search.internal.codec.ByteOutput;
+import be.imgn.search.internal.codec.Output;
 import java.util.Arrays;
 
 /// Writes a term dictionary: sorted terms, each with a fixed number of `long` values, in blocks of [#BLOCK_SIZE]
@@ -20,7 +21,7 @@ public final class TermDictionaryWriter {
 
     private static final int INITIAL_TERM_CAPACITY = 64;
 
-    private final ByteOutput out;
+    private final Output out;
     private final long deltaMask;
     private final long start;
     private final ByteOutput block = new ByteOutput();
@@ -37,10 +38,10 @@ public final class TermDictionaryWriter {
     /// @param out the receiver
     /// @param columns the number of values per term
     /// @param deltaMask the values written as deltas, one bit per column
-    public TermDictionaryWriter(ByteOutput out, int columns, long deltaMask) {
+    public TermDictionaryWriter(Output out, int columns, long deltaMask) {
         this.out = out;
         this.deltaMask = deltaMask;
-        this.start = out.size();
+        this.start = out.position();
         this.previousValues = new long[columns];
     }
 
@@ -71,7 +72,7 @@ public final class TermDictionaryWriter {
         if (blockTerms == 0) {
             index.writeVInt(length);
             index.writeBytes(term, 0, length);
-            index.writeVLong(out.size() - start);
+            index.writeVLong(out.position() - start);
         } else {
             var mismatch = Arrays.mismatch(previousTerm, 0, previousLength, term, 0, length);
             prefix = mismatch < 0 ? length : mismatch;
@@ -100,7 +101,7 @@ public final class TermDictionaryWriter {
         if (blockTerms > 0) {
             flushBlock();
         }
-        var indexOffset = out.size();
+        var indexOffset = out.position();
         out.writeVInt(blockCount);
         out.writeBytes(index);
         return indexOffset;

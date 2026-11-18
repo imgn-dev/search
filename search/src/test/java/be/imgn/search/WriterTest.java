@@ -4,11 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.EnumSource;
 
+@ParameterizedClass
+@EnumSource(StorageKind.class)
 class WriterTest {
 
     private static final Schema SCHEMA = Schema.builder()
@@ -17,10 +23,17 @@ class WriterTest {
             .keyword("tags", Stored.YES)
             .languages(List.of(ToyAnalyzer.FRENCH))
             .build();
+    private final StorageKind storage;
+    private final Path directory;
+
+    WriterTest(StorageKind storage, @TempDir Path directory) {
+        this.storage = storage;
+        this.directory = directory;
+    }
 
     @Test
     void showsChangesToSearchersOpenedAfterARefresh() throws IOException {
-        try (var index = Index.inMemory(SCHEMA);
+        try (var index = storage.open(SCHEMA, directory);
                 var writer = index.writer()) {
             writer.add(document("a", "fox"));
             var before = index.searcher();
@@ -40,7 +53,7 @@ class WriterTest {
 
     @Test
     void replacesADocumentWithTheSameKeyInTheBuffer() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(document("a", "fox"));
                 writer.add(document("b", "fox"));
@@ -54,7 +67,7 @@ class WriterTest {
 
     @Test
     void replacesADocumentWithTheSameKeyInAnotherSegment() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(document("a", "fox"));
                 writer.refresh();
@@ -72,7 +85,7 @@ class WriterTest {
 
     @Test
     void deletesInTheBufferAndInSegments() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(document("a", "fox"));
                 writer.add(document("b", "fox"));
@@ -90,7 +103,7 @@ class WriterTest {
 
     @Test
     void keepsADocumentAddedAfterTheDeleteOfItsKey() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(document("a", "fox"));
                 writer.refresh();
@@ -110,7 +123,7 @@ class WriterTest {
 
     @Test
     void searchesManyDocumentsOverSeveralSegmentsWithDeletes() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 for (var i = 0; i < 2000; i++) {
                     writer.add(document("k" + i, i % 3 == 0 ? "fox dog" : "dog"));
@@ -139,7 +152,7 @@ class WriterTest {
 
     @Test
     void readsTheStoredFieldsOfAHit() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(Document.builder("doc-42")
                         .language(Locale.FRENCH)
@@ -173,7 +186,7 @@ class WriterTest {
 
     @Test
     void rejectsAHitFromAnotherSearcher() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(document("a", "fox"));
             }
@@ -192,7 +205,7 @@ class WriterTest {
 
     @Test
     void rejectsADocumentThatDoesNotFitTheSchema() throws IOException {
-        try (var index = Index.inMemory(SCHEMA);
+        try (var index = storage.open(SCHEMA, directory);
                 var writer = index.writer()) {
             assertThatThrownBy(() -> writer.add(
                             Document.builder("a").text("summary", "x").build()))
@@ -233,7 +246,7 @@ class WriterTest {
                 .text("title", Positions.KEEP, Accents.KEEP, Stored.YES)
                 .language(failing)
                 .build();
-        try (var index = Index.inMemory(schema)) {
+        try (var index = storage.open(schema, directory)) {
             var writer = index.writer();
             writer.add(Document.builder("a")
                     .language(Locale.ENGLISH)
@@ -280,7 +293,7 @@ class WriterTest {
 
     @Test
     void splitsTextAtALoneSurrogateAndRejectsKeysWithOne() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(document("a", "fox\uD800dog\uDC00"));
                 assertThatThrownBy(() -> writer.delete("x\uD800")).isInstanceOf(IllegalArgumentException.class);
@@ -293,7 +306,7 @@ class WriterTest {
 
     @Test
     void rejectsABudgetThatIsNotPositive() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             assertThatThrownBy(() -> index.writer(0)).isInstanceOf(IllegalArgumentException.class);
             assertThatThrownBy(() -> index.writer(-1)).isInstanceOf(IllegalArgumentException.class);
             try (var writer = index.writer(1)) {
@@ -306,7 +319,7 @@ class WriterTest {
 
     @Test
     void givesOneWriterAtATime() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             var writer = index.writer();
             writer.add(document("a", "fox"));
 
@@ -325,7 +338,7 @@ class WriterTest {
 
     @Test
     void commitsTheOpenWriterWhenTheIndexCloses() throws IOException {
-        var index = Index.inMemory(SCHEMA);
+        var index = storage.open(SCHEMA, directory);
         var writer = index.writer();
         writer.add(document("a", "fox"));
         var searcher = index.searcher();

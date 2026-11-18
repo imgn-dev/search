@@ -1,11 +1,11 @@
 package be.imgn.search.internal.index;
 
 import be.imgn.search.internal.segment.SegmentMerger;
+import be.imgn.search.internal.segment.SegmentSink;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
-import org.jspecify.annotations.Nullable;
 
 /// How the writer makes segments: from buffers and by merging. The writer goes through it, so that tests can
 /// replace it with one that fails.
@@ -26,9 +26,10 @@ interface SegmentWriting {
     ///
     /// @param flusher the flusher
     /// @param buffer the buffer
-    /// @return the segment's bytes, or `null` if no document is live
-    default byte @Nullable [] flush(SegmentFlusher flusher, DocumentBuffer buffer) {
-        return flusher.flush(buffer);
+    /// @param sink where the segment goes
+    /// @return whether a segment was written, rather than none because no document is live
+    default boolean flush(SegmentFlusher flusher, DocumentBuffer buffer, SegmentSink sink) {
+        return flusher.flush(buffer, sink);
     }
 
     /// Merges segments: see [SegmentMerger#merge].
@@ -38,17 +39,19 @@ interface SegmentWriting {
     /// @param docMaps their [doc maps][SegmentMerger#docMaps]
     /// @param maxDoc the number of documents the maps keep, at least 1
     /// @param stop whether to give up
-    /// @return the merged segment's bytes, or `null` if `stop` said to give up
-    default byte @Nullable [] merge(
+    /// @param sink where the merged segment goes
+    /// @return whether the segment was written, rather than given up because `stop` said so
+    default boolean merge(
             List<String> storedFields,
             List<SegmentMerger.Input> inputs,
             List<int[]> docMaps,
             int maxDoc,
-            BooleanSupplier stop) {
+            BooleanSupplier stop,
+            SegmentSink sink) {
         var deflater = new Deflater(Deflater.BEST_SPEED);
         var inflater = new Inflater();
         try {
-            return new SegmentMerger(storedFields, deflater, inflater).merge(inputs, docMaps, maxDoc, stop);
+            return new SegmentMerger(storedFields, deflater, inflater).merge(inputs, docMaps, maxDoc, stop, sink);
         } finally {
             deflater.end();
             inflater.end();

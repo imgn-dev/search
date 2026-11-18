@@ -4,12 +4,15 @@ import static be.imgn.search.internal.index.Indexes.SCHEMA;
 import static be.imgn.search.internal.index.Indexes.document;
 import static be.imgn.search.internal.index.Indexes.expected;
 import static be.imgn.search.internal.index.Indexes.live;
+import static be.imgn.search.internal.index.Indexes.unchecked;
 import static be.imgn.search.internal.index.Indexes.versions;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import be.imgn.search.internal.segment.SegmentMerger;
+import be.imgn.search.internal.segment.SegmentSink;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +22,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /// Fail-stop: an exception that escapes a flush, a refresh or a merge closes the writer, and every later call
@@ -33,15 +35,15 @@ class FailureTest {
     private final Random random = new Random(1);
 
     @Test
-    void closesTheWriterWhenABudgetFlushFails() {
+    void closesTheWriterWhenABudgetFlushFails() throws IOException {
         var flushes = new AtomicInteger();
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, 1, EAGER, new SegmentWriting() {
             @Override
-            public byte @Nullable [] flush(SegmentFlusher flusher, DocumentBuffer buffer) {
+            public boolean flush(SegmentFlusher flusher, DocumentBuffer buffer, SegmentSink sink) {
                 if (flushes.incrementAndGet() == 3) {
                     throw new IllegalStateException("Flush failure");
                 }
-                return flusher.flush(buffer);
+                return flusher.flush(buffer, sink);
             }
         });
         writer.add(document(random, "a", "v0"));
@@ -55,10 +57,10 @@ class FailureTest {
     }
 
     @Test
-    void closesTheWriterWhenARefreshFlushFails() {
+    void closesTheWriterWhenARefreshFlushFails() throws IOException {
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET, EAGER, new SegmentWriting() {
             @Override
-            public byte @Nullable [] flush(SegmentFlusher flusher, DocumentBuffer buffer) {
+            public boolean flush(SegmentFlusher flusher, DocumentBuffer buffer, SegmentSink sink) {
                 throw new IllegalStateException("Flush failure");
             }
         });
@@ -70,7 +72,7 @@ class FailureTest {
     }
 
     @Test
-    void closesTheWriterWhenAMergeFails() {
+    void closesTheWriterWhenAMergeFails() throws IOException {
         var uncaught = new ConcurrentLinkedQueue<Throwable>();
         var previous = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, failure) -> uncaught.add(failure));
@@ -78,12 +80,13 @@ class FailureTest {
             var segments = segments(8);
             var writer = new IndexWriter(SCHEMA, segments, IndexWriter.DEFAULT_BUDGET, EAGER, new SegmentWriting() {
                 @Override
-                public byte @Nullable [] merge(
+                public boolean merge(
                         List<String> storedFields,
                         List<SegmentMerger.Input> inputs,
                         List<int[]> docMaps,
                         int maxDoc,
-                        BooleanSupplier stop) {
+                        BooleanSupplier stop,
+                        SegmentSink sink) {
                     throw new IllegalStateException("Merge failure");
                 }
             });
@@ -98,7 +101,7 @@ class FailureTest {
     }
 
     @Test
-    void keepsWorkingWhenABufferCannotBeCreated() {
+    void keepsWorkingWhenABufferCannotBeCreated() throws IOException {
         var flushers = new AtomicInteger();
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET, EAGER, new SegmentWriting() {
             @Override
@@ -119,23 +122,24 @@ class FailureTest {
     }
 
     @Test
-    void closesWhileAMergeGivesUp() {
+    void closesWhileAMergeGivesUp() throws IOException {
         var started = new CountDownLatch(1);
         var gaveUp = new AtomicInteger();
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET, EAGER, new SegmentWriting() {
             @Override
-            public byte @Nullable [] merge(
+            public boolean merge(
                     List<String> storedFields,
                     List<SegmentMerger.Input> inputs,
                     List<int[]> docMaps,
                     int maxDoc,
-                    BooleanSupplier stop) {
+                    BooleanSupplier stop,
+                    SegmentSink sink) {
                 started.countDown();
                 while (!stop.getAsBoolean()) {
                     Thread.onSpinWait();
                 }
                 gaveUp.incrementAndGet();
-                return null;
+                return false;
             }
         });
         for (var i = 0; i < 8; i++) {
@@ -153,7 +157,7 @@ class FailureTest {
     }
 
     @Test
-    void closesWithEveryOperationThatReturned() throws InterruptedException {
+    void closesWithEveryOperationThatReturned() throws InterruptedException, IOException {
         for (var round = 0; round < 5; round++) {
             var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, 16 << 10, EAGER);
             var operations = new ConcurrentLinkedQueue<Indexes.Operation>();
@@ -164,7 +168,7 @@ class FailureTest {
                 var name = "t" + t;
                 threads.add(Thread.ofPlatform()
                         .uncaughtExceptionHandler((thread, failure) -> failures.add(failure))
-                        .start(() -> operate(writer, threadRandom, name, operations)));
+                        .start(unchecked(() -> operate(writer, threadRandom, name, operations))));
             }
             while (operations.size() < 300) {
                 Thread.onSpinWait();
@@ -181,7 +185,7 @@ class FailureTest {
     }
 
     @Test
-    void keepsTheBufferedDeletesWithinTheBudget() {
+    void keepsTheBufferedDeletesWithinTheBudget() throws IOException {
         var budget = 64 << 10;
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, budget, EAGER);
         var maxDeleteBytes = 0L;
@@ -204,7 +208,7 @@ class FailureTest {
     }
 
     // A snapshot of segments of a document each, which no merge touched.
-    private Snapshot segments(int count) {
+    private Snapshot segments(int count) throws IOException {
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
         for (var i = 0; i < count; i++) {
             writer.add(document(random, "k" + i, "v0"));
@@ -213,7 +217,8 @@ class FailureTest {
         return writer.close();
     }
 
-    private static void operate(IndexWriter writer, Random random, String name, Queue<Indexes.Operation> operations) {
+    private static void operate(IndexWriter writer, Random random, String name, Queue<Indexes.Operation> operations)
+            throws IOException {
         try {
             for (var i = 0; ; i++) {
                 var key = "k" + random.nextInt(100);
@@ -232,7 +237,7 @@ class FailureTest {
         }
     }
 
-    private void assertFailed(IndexWriter writer, String cause) {
+    private void assertFailed(IndexWriter writer, String cause) throws IOException {
         assertThat(writer.failed()).isTrue();
         assertThatThrownBy(() -> writer.add(document(random, "z", "v0")))
                 .isInstanceOf(IllegalStateException.class)

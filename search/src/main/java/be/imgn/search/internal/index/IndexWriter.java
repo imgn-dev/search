@@ -7,7 +7,8 @@ import be.imgn.search.Schema;
 import be.imgn.search.internal.segment.Deletions;
 import be.imgn.search.internal.segment.Segment;
 import be.imgn.search.internal.segment.SegmentMerger;
-import java.lang.foreign.MemorySegment;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -46,8 +47,13 @@ import org.jspecify.annotations.Nullable;
 /// them, and turns the buffers into segments in parallel. The segments have their own lock, which refreshes and
 /// the end of merges take, never adds, deletes or searches.
 ///
-/// Fail-stop: an exception escaping a flush, a refresh or a merge closes the writer. The snapshots it made stay
-/// as they are, and every later call throws an `IllegalStateException` caused by that exception.
+/// Segments live in [SegmentFiles]: on the heap, or in files that the writer references from when it makes them,
+/// or starts from them, until it drops them. Every snapshot it returns holds a reference, for the caller to
+/// release.
+///
+/// Fail-stop: an exception escaping a flush, a refresh, a commit or a merge closes the writer, an `IOException`
+/// among them. The snapshots it made stay as they are, and every later call throws an `IllegalStateException`
+/// caused by that exception.
 public final class IndexWriter {
 
     /// The memory budget of the buffers by default.
@@ -63,6 +69,7 @@ public final class IndexWriter {
     private final long budget;
     private final TieredMergePolicy policy;
     private final SegmentWriting writing;
+    private final SegmentFiles files;
     private final List<String> storedFields;
     // The documents of the segments and buffers, deleted ones included until a merge or a flush drops them.
     // Only adds increase it, under lock.
@@ -93,7 +100,23 @@ public final class IndexWriter {
     /// A writer that continues from a snapshot.
     ///
     /// @param schema the schema documents are analysed with
-    /// @param snapshot the current snapshot
+    /// @param snapshot the current snapshot, whose segments `files` holds references to for the writer
+    /// @param budget the memory budget of the buffers and the buffered deletes, in bytes
+    /// @param files where the segments live
+    public IndexWriter(Schema schema, Snapshot snapshot, long budget, SegmentFiles files) {
+        this(
+                schema,
+                snapshot,
+                budget,
+                TieredMergePolicy.DEFAULT.withMaxSegmentBytes(files.maxSegmentBytes()),
+                SegmentWriting.DEFAULT,
+                files);
+    }
+
+    /// A writer on the heap that continues from a snapshot.
+    ///
+    /// @param schema the schema documents are analysed with
+    /// @param snapshot the current snapshot, of segments on the heap
     /// @param budget the memory budget of the buffers and the buffered deletes, in bytes
     public IndexWriter(Schema schema, Snapshot snapshot, long budget) {
         this(schema, snapshot, budget, TieredMergePolicy.DEFAULT, SegmentWriting.DEFAULT);
@@ -104,10 +127,21 @@ public final class IndexWriter {
     }
 
     IndexWriter(Schema schema, Snapshot snapshot, long budget, TieredMergePolicy policy, SegmentWriting writing) {
+        this(schema, snapshot, budget, policy, writing, HeapSegments.INSTANCE);
+    }
+
+    IndexWriter(
+            Schema schema,
+            Snapshot snapshot,
+            long budget,
+            TieredMergePolicy policy,
+            SegmentWriting writing,
+            SegmentFiles files) {
         this.schema = schema;
         this.budget = budget;
         this.policy = policy;
         this.writing = writing;
+        this.files = files;
         this.storedFields = new DocumentIndexer(schema).storedFieldNames();
         this.merges = Executors.newFixedThreadPool(
                 MERGE_THREADS,
@@ -125,7 +159,8 @@ public final class IndexWriter {
     /// @throws IllegalStateException if the writer is closed or failed, or the index already holds
     ///     `Integer.MAX_VALUE` documents; an exception from the analysis, such as a language analyzer's, leaves the
     ///     writer as it was
-    public long add(Document document) {
+    /// @throws IOException if a segment cannot be written
+    public long add(Document document) throws IOException {
         Worker worker;
         Epoch current;
         lock.lock();
@@ -164,7 +199,8 @@ public final class IndexWriter {
     /// @param key the key
     /// @return the delete's sequence number
     /// @throws IllegalStateException if the writer is closed or failed
-    public long delete(String key) {
+    /// @throws IOException if a segment cannot be written
+    public long delete(String key) throws IOException {
         long seq;
         boolean refresh;
         lock.lock();
@@ -187,14 +223,30 @@ public final class IndexWriter {
     /// buffer into a segment and resolves the epoch's deletes. Operations that start meanwhile wait for the next
     /// refresh. Merges that ended since the last refresh become visible.
     ///
-    /// @return the snapshot
+    /// @return the snapshot, which the caller holds a reference to
     /// @throws IllegalStateException if the writer is closed or failed
-    public Snapshot refresh() {
+    /// @throws IOException if a segment cannot be written
+    public Snapshot refresh() throws IOException {
         return refreshWithCut().snapshot();
     }
 
+    /// Refreshes, as [#refresh()], and makes the snapshot durable as the index's last commit.
+    ///
+    /// @return the snapshot, which the caller holds a reference to
+    /// @throws IllegalStateException if the writer is closed or failed
+    /// @throws IOException if a segment or the commit cannot be written
+    public Snapshot commit() throws IOException {
+        refreshLock.lock();
+        try {
+            check(false);
+            return failStop(this::doCommit);
+        } finally {
+            refreshLock.unlock();
+        }
+    }
+
     /// Refreshes, as [#refresh()], and tells the cut.
-    Refreshed refreshWithCut() {
+    Refreshed refreshWithCut() throws IOException {
         refreshLock.lock();
         try {
             check(false);
@@ -204,12 +256,13 @@ public final class IndexWriter {
         }
     }
 
-    /// Stops the merges, waiting for those in progress to give up, refreshes and releases the compressors. Adds and
-    /// deletes fail from now on.
+    /// Stops the merges, waiting for those in progress to give up, commits, and releases the compressors and the
+    /// writer's references to its segments. Adds and deletes fail from now on.
     ///
-    /// @return the snapshot of every operation
+    /// @return the snapshot of every operation, which the caller holds a reference to
     /// @throws IllegalStateException if the writer failed
-    public Snapshot close() {
+    /// @throws IOException if a segment or the commit cannot be written
+    public Snapshot close() throws IOException {
         lock.lock();
         try {
             checkState(failure != null || !closed, "The writer is closed");
@@ -225,9 +278,10 @@ public final class IndexWriter {
         }
         merges.close();
         try {
-            return lastRefresh();
+            return lastCommit();
         } finally {
             endFlushers();
+            files.close();
         }
     }
 
@@ -243,9 +297,14 @@ public final class IndexWriter {
         }
     }
 
+    /// Waits for the merges in progress to give up, once the writer failed.
+    public void awaitStopped() {
+        merges.close();
+    }
+
     /// Merges every segment into one on the calling thread, after waiting for the merges in progress. The merged
     /// segment becomes visible at the next refresh.
-    void forceMerge() {
+    void forceMerge() throws IOException {
         var merge = startMergeOfAll();
         if (merge != null) {
             runMerge(merge);
@@ -279,7 +338,7 @@ public final class IndexWriter {
     ///
     /// @param merge the merge
     /// @return whether the merge ended, rather than gave up because the writer is closing
-    boolean runMerge(Merge merge) {
+    boolean runMerge(Merge merge) throws IOException {
         var swapped = false;
         try {
             var inputs = new ArrayList<SegmentMerger.Input>(merge.inputs.size());
@@ -295,11 +354,12 @@ public final class IndexWriter {
             }
             Segment merged = null;
             if (maxDoc > 0) {
-                var bytes = writing.merge(storedFields, inputs, docMaps, maxDoc, () -> stopMerges);
-                if (bytes == null) {
+                var size = maxDoc;
+                merged = files.write(
+                        true, sink -> writing.merge(storedFields, inputs, docMaps, size, () -> stopMerges, sink));
+                if (merged == null) {
                     return false;
                 }
-                merged = Segment.open(MemorySegment.ofArray(bytes));
             }
             swap(merge, merged, docMaps);
             swapped = true;
@@ -360,11 +420,11 @@ public final class IndexWriter {
         }
     }
 
-    private Snapshot lastRefresh() {
+    private Snapshot lastCommit() throws IOException {
         refreshLock.lock();
         try {
             check(true);
-            return failStop(this::doRefresh).snapshot();
+            return failStop(this::doCommit);
         } finally {
             refreshLock.unlock();
         }
@@ -398,7 +458,7 @@ public final class IndexWriter {
     }
 
     // Runs a step whose exception closes the writer, and is thrown again.
-    private <T> T failStop(Callable<T> step) {
+    private <T> T failStop(Callable<T> step) throws IOException {
         var task = new FutureTask<>(step);
         task.run();
         if (task.state() == Future.State.FAILED) {
@@ -427,6 +487,7 @@ public final class IndexWriter {
             segmentsLock.unlock();
         }
         merges.shutdown();
+        files.close();
     }
 
     // Called under lock: a free worker, or a new one.
@@ -441,7 +502,7 @@ public final class IndexWriter {
         return worker;
     }
 
-    private void putBack(Worker worker, Epoch current) {
+    private void putBack(Worker worker, Epoch current) throws IOException {
         var bytes = worker.buffer.bytesUsed();
         var docs = worker.buffer.docCount();
         @Nullable Worker toFlush;
@@ -516,7 +577,7 @@ public final class IndexWriter {
     }
 
     // A refresh for the budget, unless one is running, which does the same.
-    private void refreshForMemory() {
+    private void refreshForMemory() throws IOException {
         if (!refreshLock.tryLock()) {
             return;
         }
@@ -529,14 +590,15 @@ public final class IndexWriter {
             } finally {
                 lock.unlock();
             }
-            failStop(this::doRefresh);
+            // Nobody publishes this snapshot.
+            files.release(failStop(this::doRefresh).snapshot());
         } finally {
             refreshLock.unlock();
         }
     }
 
     // Returns whether the epoch wants a refresh.
-    private boolean flushWorker(Worker worker, Epoch current) {
+    private boolean flushWorker(Worker worker, Epoch current) throws IOException {
         var task = new FutureTask<>(() -> listOf(flush(worker.flusher, worker.buffer, current)));
         task.run();
         var failed = task.state() == Future.State.FAILED;
@@ -565,7 +627,22 @@ public final class IndexWriter {
         return refresh;
     }
 
-    private Refreshed doRefresh() {
+    // A snapshot that fails to commit is released: its caller never gets it.
+    private Snapshot doCommit() throws IOException {
+        var snapshot = doRefresh().snapshot();
+        var committed = false;
+        try {
+            files.commit(snapshot);
+            committed = true;
+        } finally {
+            if (!committed) {
+                files.release(snapshot);
+            }
+        }
+        return snapshot;
+    }
+
+    private Refreshed doRefresh() throws IOException {
         Epoch ended;
         var buffers = new ArrayList<DocumentBuffer>();
         var created = new ArrayList<LiveSegment>();
@@ -600,12 +677,20 @@ public final class IndexWriter {
         } finally {
             segmentsLock.unlock();
         }
-        maybeMerge();
+        var merging = false;
+        try {
+            maybeMerge();
+            merging = true;
+        } finally {
+            if (!merging) {
+                files.release(snapshot);
+            }
+        }
         return new Refreshed(snapshot, ended.cut);
     }
 
     // Flushes the buffers in parallel: this thread and a virtual thread per other buffer.
-    private List<LiveSegment> flushAll(List<DocumentBuffer> buffers, Epoch owner) {
+    private List<LiveSegment> flushAll(List<DocumentBuffer> buffers, Epoch owner) throws IOException {
         var tasks = new ArrayList<FutureTask<List<LiveSegment>>>(buffers.size());
         for (var buffer : buffers) {
             tasks.add(new FutureTask<>(() -> flushPooled(buffer, owner)));
@@ -628,7 +713,7 @@ public final class IndexWriter {
         return created;
     }
 
-    private List<LiveSegment> flushPooled(DocumentBuffer buffer, Epoch owner) {
+    private List<LiveSegment> flushPooled(DocumentBuffer buffer, Epoch owner) throws IOException {
         SegmentFlusher flusher;
         synchronized (flushers) {
             flusher = flushers.poll();
@@ -646,16 +731,16 @@ public final class IndexWriter {
     }
 
     // Drops the documents that an operation of the epoch replaced or deleted, and writes the others.
-    private @Nullable LiveSegment flush(SegmentFlusher flusher, DocumentBuffer buffer, Epoch owner) {
+    private @Nullable LiveSegment flush(SegmentFlusher flusher, DocumentBuffer buffer, Epoch owner) throws IOException {
         for (var doc = 0; doc < buffer.docCount(); doc++) {
             var latest = owner.deletes.get(buffer.key(doc));
             if (latest != null && latest > buffer.seq(doc)) {
                 buffer.drop(doc);
             }
         }
-        var bytes = writing.flush(flusher, buffer);
+        var segment = files.write(false, sink -> writing.flush(flusher, buffer, sink));
         documents.addAndGet(buffer.liveCount() - buffer.docCount());
-        if (bytes == null) {
+        if (segment == null) {
             return null;
         }
         var seqs = new long[buffer.liveCount()];
@@ -667,7 +752,7 @@ public final class IndexWriter {
                 maxSeq = Math.max(maxSeq, buffer.seq(doc));
             }
         }
-        return new LiveSegment(Segment.open(MemorySegment.ofArray(bytes)), Deletions.NONE, seqs, maxSeq);
+        return new LiveSegment(segment, Deletions.NONE, seqs, maxSeq);
     }
 
     // Called under segmentsLock.
@@ -707,6 +792,7 @@ public final class IndexWriter {
             if (!live.merging && live.deletions.count() == live.segment.maxDoc()) {
                 iterator.remove();
                 documents.addAndGet(-live.segment.maxDoc());
+                files.release(live.segment);
             }
         }
         var entries = new ArrayList<Snapshot.Entry>(segments.size());
@@ -715,7 +801,9 @@ public final class IndexWriter {
             entries.add(new Snapshot.Entry(live.segment, live.deletions, base));
             base += live.segment.maxDoc();
         }
-        return new Snapshot(entries, base);
+        var snapshot = new Snapshot(entries, base);
+        files.retain(snapshot);
+        return snapshot;
     }
 
     // Starts the merges the policy chooses, as long as threads are free: a large merge never takes the last one.
@@ -823,6 +911,7 @@ public final class IndexWriter {
             }
             var position = segments.indexOf(merge.inputs.getFirst());
             segments.removeAll(merge.inputs);
+            merge.inputs.forEach(input -> files.release(input.segment));
             if (merged != null) {
                 var deletions = Deletions.NONE.with(replayed, count, merged.maxDoc());
                 segments.add(position, new LiveSegment(merged, deletions, null, 0));
@@ -855,8 +944,14 @@ public final class IndexWriter {
         return segment == null ? List.of() : List.of(segment);
     }
 
-    // The exception, to throw: unchecked ones as they are.
-    private static RuntimeException rethrow(Throwable cause) {
+    // The exception, to throw: unchecked ones and I/O exceptions as they are, those an output wraps unwrapped.
+    private static RuntimeException rethrow(Throwable cause) throws IOException {
+        if (cause instanceof IOException e) {
+            throw e;
+        }
+        if (cause instanceof UncheckedIOException e) {
+            throw e.getCause();
+        }
         if (cause instanceof RuntimeException e) {
             return e;
         }

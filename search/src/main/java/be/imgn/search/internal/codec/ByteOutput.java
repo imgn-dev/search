@@ -5,12 +5,11 @@ import static be.imgn.gaia.core.base.Preconditions.checkState;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.zip.CRC32C;
 
 /// A growable array of bytes that numbers are written into in little-endian order. Not thread-safe.
-public final class ByteOutput {
+public final class ByteOutput extends Output {
 
     /// The largest size: a segment held on the heap is limited to 1 GiB, so that merges never approach the 2 GiB
     /// limit of an array.
@@ -60,6 +59,7 @@ public final class ByteOutput {
     /// Writes a byte.
     ///
     /// @param value the byte, in its low 8 bits
+    @Override
     public void writeByte(int value) {
         ensure(1);
         bytes[size++] = (byte) value;
@@ -68,6 +68,7 @@ public final class ByteOutput {
     /// Writes an `int` in 4 bytes.
     ///
     /// @param value the value
+    @Override
     public void writeInt(int value) {
         ensure(Integer.BYTES);
         INT.set(bytes, size, value);
@@ -77,6 +78,7 @@ public final class ByteOutput {
     /// Writes a `long` in 8 bytes.
     ///
     /// @param value the value
+    @Override
     public void writeLong(long value) {
         ensure(Long.BYTES);
         LONG.set(bytes, size, value);
@@ -87,6 +89,7 @@ public final class ByteOutput {
     /// every byte but the last.
     ///
     /// @param value the value
+    @Override
     public void writeVInt(int value) {
         ensure(Integer.BYTES + 1);
         var v = value;
@@ -100,6 +103,7 @@ public final class ByteOutput {
     /// Writes a `long`, read as unsigned, in 1 to 10 bytes, as [#writeVInt] does.
     ///
     /// @param value the value
+    @Override
     public void writeVLong(long value) {
         ensure(Long.BYTES + 2);
         var v = value;
@@ -115,35 +119,31 @@ public final class ByteOutput {
     /// @param source the array
     /// @param offset the index of the first byte
     /// @param length the number of bytes
+    @Override
     public void writeBytes(byte[] source, int offset, int length) {
         ensure(length);
         System.arraycopy(source, offset, bytes, size, length);
         size += length;
     }
 
-    /// Writes the bytes written into another output.
-    ///
-    /// @param other the other output
-    public void writeBytes(ByteOutput other) {
-        writeBytes(other.bytes, 0, other.size);
-    }
-
-    /// Writes a string as its length in UTF-8 bytes, [variable-length][#writeVInt], then those bytes.
-    ///
-    /// @param value the string
-    public void writeString(String value) {
-        var utf8 = value.getBytes(StandardCharsets.UTF_8);
-        writeVInt(utf8.length);
-        writeBytes(utf8, 0, utf8.length);
-    }
-
     /// The CRC32C checksum of the bytes written.
     ///
     /// @return the checksum
+    @Override
     public int checksum() {
         var crc = new CRC32C();
         crc.update(bytes, 0, size);
         return (int) crc.getValue();
+    }
+
+    @Override
+    public long position() {
+        return size;
+    }
+
+    @Override
+    public void writeTo(Output target) {
+        target.writeBytes(bytes, 0, size);
     }
 
     /// A copy of the bytes written.

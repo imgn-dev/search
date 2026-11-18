@@ -10,9 +10,15 @@ import be.imgn.search.Stored;
 import be.imgn.search.WordAnalyzer;
 import be.imgn.search.internal.search.Searching;
 import be.imgn.search.internal.segment.StoredRecord;
+import be.imgn.search.internal.store.FsDirectory;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -53,6 +59,9 @@ final class Indexes {
             .keyword("version", Stored.YES)
             .language(FRENCH)
             .build();
+
+    /// The identifiers of the analyzers of [#SCHEMA], by language, as a file index records them.
+    static final Map<String, String> ANALYZERS = Map.of("fr", "test/french");
 
     // Skewed: the first words are frequent, the last ones rare. Some end with "s", which French drops.
     private static final List<String> WORDS = List.of(
@@ -194,6 +203,38 @@ final class Indexes {
                 .value();
     }
 
+    /// The documents of the last commit of a file index, by key, with their versions. Checks every segment in full.
+    static Map<String, String> committed(Path path) throws IOException {
+        var storage = FileStorage.open(new FsDirectory(path), SCHEMA.fields(), ANALYZERS);
+        try {
+            var snapshot = storage.snapshot();
+            snapshot.segments().forEach(entry -> entry.segment().checkIntegrity());
+            var versions = versions(snapshot);
+            storage.release(snapshot);
+            return versions;
+        } finally {
+            storage.close();
+        }
+    }
+
+    /// The files of a file index that its newest manifest does not list, the lock aside: what nothing should keep
+    /// once the index is closed.
+    static List<String> unlisted(Path path) throws IOException {
+        var names = new FsDirectory(path).list();
+        var newest = names.stream().mapToLong(Manifest::generationOf).max().orElseThrow();
+        var manifest = Manifest.decode(Files.readAllBytes(path.resolve(Manifest.fileName(newest))), newest);
+        var listed = new HashSet<String>();
+        listed.add("write.lock");
+        listed.add(Manifest.fileName(newest));
+        for (var segment : manifest.segments()) {
+            listed.add("segment-" + segment.id());
+            if (segment.deletionGeneration() > 0) {
+                listed.add("segment-" + segment.id() + ".del-" + segment.deletionGeneration());
+            }
+        }
+        return names.stream().filter(name -> !listed.contains(name)).sorted().toList();
+    }
+
     private static String key(Snapshot snapshot, int doc) {
         var entry = snapshot.segments().get(snapshot.segmentOf(doc));
         return entry.segment().key(doc - entry.base());
@@ -211,10 +252,29 @@ final class Indexes {
         return WORDS.get(Math.min(WORDS.size() - 1, (int) Math.abs(random.nextGaussian() * 4)));
     }
 
+    /// A task that may throw an `IOException`, as a `Runnable` that throws it unchecked.
+    static Runnable unchecked(IoTask task) {
+        return () -> {
+            try {
+                task.run();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        };
+    }
+
     /// An add or a delete, with its sequence number.
     ///
     /// @param seq the sequence number
     /// @param key the key
     /// @param version the version an add wrote, or `null` for a delete
     record Operation(long seq, String key, @Nullable String version) {}
+
+    /// A task that may throw an `IOException`.
+    @FunctionalInterface
+    interface IoTask {
+
+        /// Runs the task.
+        void run() throws IOException;
+    }
 }

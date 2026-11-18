@@ -13,6 +13,7 @@ import be.imgn.search.Stored;
 import be.imgn.search.WordAnalyzer;
 import be.imgn.search.internal.index.IndexWriter;
 import be.imgn.search.internal.index.Snapshot;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -77,7 +78,7 @@ class TopKTest {
             .build();
 
     @Test
-    void skippingGivesTheExhaustiveTopK() {
+    void skippingGivesTheExhaustiveTopK() throws IOException {
         for (var seed = 0; seed < SEEDS; seed++) {
             var random = new Random(seed);
             var snapshot = index(random);
@@ -97,7 +98,7 @@ class TopKTest {
     }
 
     @Test
-    void boundsAreNeverBelowTheScores() {
+    void boundsAreNeverBelowTheScores() throws IOException {
         for (var seed = 0; seed < SEEDS / 2; seed++) {
             var random = new Random(seed);
             var snapshot = index(random);
@@ -129,7 +130,7 @@ class TopKTest {
     }
 
     // Up to 4000 documents in up to 4 segments, with deletes and replacements of earlier keys.
-    private static Snapshot index(Random random) {
+    private static Snapshot index(Random random) throws IOException {
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
         var documents = 1000 + random.nextInt(3000);
         for (var doc = 0; doc < documents; doc++) {

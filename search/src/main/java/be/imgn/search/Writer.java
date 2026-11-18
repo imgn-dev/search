@@ -15,9 +15,9 @@ import java.io.IOException;
 /// added before it. Segments are merged in the background, on at most two threads of the writer.
 ///
 /// Methods that may write files throw `IOException` on every storage, so one type serves them all. An exception
-/// that escapes writing a segment, a refresh or a merge, an `IOException` among them, closes the writer: the index
-/// stays at its last commit, or in memory at its last refresh, the index can give a new writer, and every later
-/// call to this one throws an `IllegalStateException` caused by that exception.
+/// that escapes writing a segment, a refresh, a commit or a merge, an `IOException` among them, closes the writer:
+/// the index stays at its last commit, or in memory at its last refresh, the index can give a new writer, and
+/// every later call to this one throws an `IllegalStateException` caused by that exception.
 ///
 /// @since 0.1.0
 public final class Writer implements AutoCloseable {
@@ -78,10 +78,16 @@ public final class Writer implements AutoCloseable {
     /// Refreshes and makes every change so far durable. An index in memory has nothing to make durable, so
     /// committing it is refreshing it.
     ///
+    /// In a file index, the commit forces the new segment and deletion files to the storage device, then writes a
+    /// new manifest that lists them, atomically: a crash or a power cut leaves the index at this commit or at the
+    /// previous one. When the commit throws once its manifest is renamed into place, the index on disk may be at
+    /// either.
+    ///
     /// @throws IllegalStateException if the writer is closed or failed
     /// @throws IOException if the index cannot be written
     public synchronized void commit() throws IOException {
-        refresh();
+        checkOpen();
+        index.publish(writer.commit());
     }
 
     /// Stops the merges, commits and releases the writer, so that the index can give a new one. Closing a closed
@@ -104,6 +110,10 @@ public final class Writer implements AutoCloseable {
 
     boolean failed() {
         return writer.failed();
+    }
+
+    void awaitStopped() {
+        writer.awaitStopped();
     }
 
     private void checkOpen() {

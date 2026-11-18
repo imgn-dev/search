@@ -14,6 +14,9 @@ public final class Format {
     /// The magic number of a deletion bitset.
     public static final int DELETIONS_MAGIC = 0x4C45_4453;
 
+    /// The magic number of a manifest.
+    public static final int MANIFEST_MAGIC = 0x4E41_4D53;
+
     /// The current version of the format.
     public static final int VERSION = 1;
 
@@ -29,7 +32,7 @@ public final class Format {
     ///
     /// @param out the receiver
     /// @param magic the magic number of the file's kind
-    public static void writeHeader(ByteOutput out, int magic) {
+    public static void writeHeader(Output out, int magic) {
         out.writeInt(magic);
         out.writeInt(VERSION);
     }
@@ -37,7 +40,7 @@ public final class Format {
     /// Writes the checksum of everything written so far.
     ///
     /// @param out the receiver
-    public static void writeChecksum(ByteOutput out) {
+    public static void writeChecksum(Output out) {
         out.writeInt(out.checksum());
     }
 

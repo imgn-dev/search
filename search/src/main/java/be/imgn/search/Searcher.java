@@ -18,18 +18,23 @@ import org.jspecify.annotations.Nullable;
 
 /// Searches a snapshot of an [Index]: the documents as of the refresh before it was opened.
 ///
-/// Thread-safe. It must be closed, which releases what it holds.
+/// Thread-safe. It must be closed, which releases what it holds: in a file index, the files of its snapshot, which
+/// stay mapped, and on disk, until then. A search that runs while another thread closes the searcher may throw an
+/// `IllegalStateException`.
 ///
 /// @since 0.1.0
 public final class Searcher implements AutoCloseable {
 
+    private final Index index;
     private final Schema schema;
     private final Snapshot snapshot;
     private final ArrayDeque<Inflater> inflaters = new ArrayDeque<>();
     private volatile boolean closed;
 
-    Searcher(Schema schema, Snapshot snapshot) {
-        this.schema = schema;
+    // Takes over a reference to the snapshot.
+    Searcher(Index index, Snapshot snapshot) {
+        this.index = index;
+        this.schema = index.schema();
         this.snapshot = snapshot;
     }
 
@@ -91,14 +96,18 @@ public final class Searcher implements AutoCloseable {
         return new StoredDocument(schema, hit.key(), locale(record.language()), Map.copyOf(values));
     }
 
-    /// Closes the searcher. Closing a closed searcher does nothing.
+    /// Closes the searcher, which releases the files it reads. Closing a closed searcher does nothing.
     @Override
     public void close() {
-        closed = true;
         synchronized (inflaters) {
+            if (closed) {
+                return;
+            }
+            closed = true;
             inflaters.forEach(Inflater::end);
             inflaters.clear();
         }
+        index.release(snapshot);
     }
 
     private List<Hit> run(@Nullable Locale language, Query query, int k) {

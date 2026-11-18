@@ -173,6 +173,11 @@ public final class Schema {
         return QueryParser.parse(this, text, false);
     }
 
+    /// The language analyzers, by language.
+    Map<Locale, LanguageAnalyzer> languages() {
+        return languages;
+    }
+
     /// Checks that `document` fits this schema: every field declared, and of the declared kind.
     ///
     /// @throws IllegalArgumentException if a field of `document` is not declared, or is of another kind

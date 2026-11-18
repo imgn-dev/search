@@ -176,8 +176,10 @@ Each language analyzer has an identifier that names its algorithm and version, s
 `snowball-3.2.0/french`. A file index records its fields with their options, and the identifier of each
 language analyzer it used. It refuses to open with a schema that changes a field, or that changes or lacks one
 of those analyzers, for instance without `search-snowball` or with another Snowball release: the terms already
-indexed would no longer match the queries. A new language analyzer is accepted: it applies to the documents
-added from then on. The default fields, the detector and its threshold are not recorded: they decide how new
+indexed would no longer match the queries. The fields must be the same, in the same order: adding or removing
+one is refused too, since stored records refer to their fields by position. A new language analyzer is
+accepted: it applies to the documents added from then on. The analyzers a commit records are those recorded
+before plus those of the writer's schema, so the set only grows. The default fields, the detector and its threshold are not recorded: they decide how new
 documents are routed and how queries are read, never what the indexed terms mean.
 
 ## Documents
@@ -242,7 +244,8 @@ generation, since the segment never changes.
 
 Every file starts with a magic number and a format version and ends with a CRC32C checksum
 (`java.util.zip.CRC32C`). Opening checks the header and footer of segment files, and the whole manifest and
-deletion files, which are small. A segment's checksum is computed while it is written and checked in full by
+deletion files, which are small. The manifest records the size and checksum of each segment file, so that
+opening checks a segment's footer against it without reading the file. A segment's checksum is computed while it is written and checked in full by
 `index.check()`, on demand: checking it on open would read the whole index, and for an index larger than RAM
 evict the page cache.
 
@@ -265,7 +268,12 @@ holding nothing but a lock or temporary files; it refuses any other directory wi
 
 `Index.open` takes `FileChannel.tryLock` on `write.lock` for as long as the index is open. Whether the lock is
 held by another process (`tryLock` returns `null`) or by this one (`OverlappingFileLockException`), it throws
-`IndexLockedException`, an `IOException`.
+`IndexLockedException`, an `IOException`. The locks of the process are also tracked by the lock file's real path, checked
+before any channel is opened: on POSIX systems, closing any channel on a file releases every lock the process
+holds on it, so a second `Index.open` in the same process must not open one.
+
+File names carry their numbers without leading zeros, in at most 18 digits; a file named otherwise is not the
+index's, and is left alone.
 
 Methods that write files throw `IOException`, like gaia's I/O, on both storages, so that one `Writer` type
 serves both; searching a snapshot does not.
@@ -311,15 +319,19 @@ operations on one key end as they were ordered.
   index these segments are written to files without `force`, and mapped like the others.
 - `commit()` refreshes and makes every change durable (files only):
   1. write the deletion files not yet written, and `force` them with the segment files written since the
-     last commit;
-  2. write `manifest-<n+1>`, the list of live segments with their deletion generations, to a temporary file,
-     `force` it, rename it with `ATOMIC_MOVE`, and `force` the directory, so the new names survive a power
-     cut. Forcing a directory is skipped where it cannot be opened;
+     last commit; then `force` the directory, so that their names survive a power cut before a manifest lists
+     them: a rename may persist before the creations that precede it;
+  2. write `manifest-<n+1>`, the list of live segments with their size, checksum and deletion generation, to a
+     temporary file, `force` it, rename it with `ATOMIC_MOVE`, and `force` the directory, so the new name
+     survives a power cut. Forcing a directory is skipped where it cannot be opened;
   3. release the previous manifest's files.
 - `close()` commits, stops the merges and releases the writer.
 
 After an `IOException` the writer is closed: the index stays at its last commit, and a new writer can be
-taken. Opening a file index reads the newest manifest; a bad checksum there throws, rather than silently
+taken. A commit that fails once its manifest is renamed may leave the index at that commit: the next
+writer reads the newest manifest again. A writer that failed never renames a manifest, even from a commit
+already in progress on another thread, and a new writer waits for such a commit to end before it cleans the
+directory up. Opening a file index reads the newest manifest; a bad checksum there throws, rather than silently
 falling back to an older commit.
 
 ### Merges
@@ -335,7 +347,9 @@ never wait behind a large one.
 A merge reads its segments with the deletions current when it starts. When it ends, the writer replays onto
 the merged segment the deletes that reached its inputs meanwhile, through the mapping from old to new document
 numbers, then swaps the segments. The merged segment becomes visible at the next refresh, and durable at the
-next commit.
+next commit. In a file index a merge writes its sections, which it fills side by side, to temporary
+files, `<segment>.<n>.tmp`, then copies them into the segment file, so that it holds little on the heap
+whatever its size; a flush, bounded by the memory budget, keeps its sections on the heap.
 
 ### Files
 
@@ -522,8 +536,9 @@ try (var index = Index.open(path, schema)) {              // or Index.inMemory(s
   one searcher return what a single thread does.
 - Top-k: block-max and MaxScore return the same hits as exhaustive scoring.
 - Crash tests: file operations go through an internal layer that a test replaces with one that fails, or
-  simulates a power cut that loses whatever was not forced, at every write, `force`, rename and delete. After
-  each, reopening gives exactly the last commit.
+  simulates a power cut that loses whatever was not forced, or keeps only the renames among the changes to the
+  directory since its last force, at every write, `force`, rename and delete. After each, reopening gives
+  exactly the last commit, or the one in progress if its manifest survived.
 
 ## Open questions
 

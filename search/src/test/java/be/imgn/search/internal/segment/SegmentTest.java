@@ -82,7 +82,8 @@ class SegmentTest {
     // Documents: 0 "a fox" (keyword animal), 1 no body (keyword animal), 2 "fox and fox" in French.
     private static byte[] write() {
         var deflater = new Deflater(Deflater.BEST_SPEED);
-        var writer = new SegmentWriter(3, List.of("body", "tags"), deflater);
+        var sink = new HeapSink();
+        var writer = new SegmentWriter(3, List.of("body", "tags"), deflater, sink);
         var norms = new byte[] {(byte) Norms.encode(2), 0, (byte) Norms.encode(3)};
         writer.startField("body", true, norms, true);
         addTerm(writer, "a", new int[] {0}, new int[] {1}, new int[] {0});
@@ -109,9 +110,9 @@ class SegmentTest {
             }
             writer.addStored(record.array(), 0, record.size());
         }
-        var bytes = writer.finish();
+        writer.finish();
         deflater.end();
-        return bytes;
+        return sink.bytes();
     }
 
     private static void addTerm(

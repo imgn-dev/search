@@ -2,13 +2,13 @@ package be.imgn.search.internal.index;
 
 import be.imgn.search.internal.codec.IntSorter;
 import be.imgn.search.internal.codec.Norms;
+import be.imgn.search.internal.segment.SegmentSink;
 import be.imgn.search.internal.segment.SegmentWriter;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.Deflater;
-import org.jspecify.annotations.Nullable;
 
 /// Turns a [DocumentBuffer] into a segment, dropping the documents replaced or deleted while buffered. Not
 /// thread-safe: it reuses its arrays from one buffer to the next, and its compressor, which [#end()] releases.
@@ -32,18 +32,19 @@ final class SegmentFlusher {
 
     /// Writes a segment of the buffer's live documents.
     ///
-    /// @return the segment's bytes, or `null` if no document is live
-    byte @Nullable [] flush(DocumentBuffer buffer) {
+    /// @param sink where the segment goes
+    /// @return whether a segment was written, rather than none because no document is live
+    boolean flush(DocumentBuffer buffer, SegmentSink sink) {
         var maxDoc = buffer.liveCount();
         if (maxDoc == 0) {
-            return null;
+            return false;
         }
         var docMap = new int[buffer.docCount()];
         var next = 0;
         for (var doc = 0; doc < docMap.length; doc++) {
             docMap[doc] = buffer.isDeleted(doc) ? -1 : next++;
         }
-        var writer = new SegmentWriter(maxDoc, storedFields, deflater);
+        var writer = new SegmentWriter(maxDoc, storedFields, deflater, sink);
         var fields = buffer.fields();
         fields.sort(Comparator.comparing(FieldBuffer::name));
         var norms = new HashMap<String, byte[]>();
@@ -57,7 +58,8 @@ final class SegmentFlusher {
                 writer.addStored(buffer.storedBytes(), start, buffer.storedEnd(doc) - start);
             }
         }
-        return writer.finish();
+        writer.finish();
+        return true;
     }
 
     // A neutral field sorts before its language fields, whose names it prefixes, so its norms are ready for them.

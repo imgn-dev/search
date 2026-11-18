@@ -9,6 +9,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import be.imgn.search.Document;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,7 +19,7 @@ import org.junit.jupiter.api.Test;
 class MergeTest {
 
     @Test
-    void keepsTheResultsOfSegmentsWithoutDeletions() {
+    void keepsTheResultsOfSegmentsWithoutDeletions() throws IOException {
         var random = new Random(1);
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
         for (var segment = 0; segment < 5; segment++) {
@@ -41,7 +42,7 @@ class MergeTest {
     }
 
     @Test
-    void dropsDeletedDocumentsAsAFreshIndexWouldHoldThem() {
+    void dropsDeletedDocumentsAsAFreshIndexWouldHoldThem() throws IOException {
         var random = new Random(2);
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
         var model = new LinkedHashMap<String, Document>();
@@ -83,7 +84,7 @@ class MergeTest {
     }
 
     @Test
-    void replaysTheDeletesThatReachItsSegmentsMeanwhile() {
+    void replaysTheDeletesThatReachItsSegmentsMeanwhile() throws IOException {
         var random = new Random(3);
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
         var model = new LinkedHashMap<String, Document>();
@@ -116,7 +117,7 @@ class MergeTest {
     }
 
     @Test
-    void leavesOpenSnapshotsAsTheyWere() {
+    void leavesOpenSnapshotsAsTheyWere() throws IOException {
         var random = new Random(4);
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
         for (var segment = 0; segment < 4; segment++) {
@@ -142,7 +143,7 @@ class MergeTest {
     }
 
     @Test
-    void mergesInTheBackgroundBeyondTenSegments() {
+    void mergesInTheBackgroundBeyondTenSegments() throws IOException {
         var random = new Random(5);
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
         var model = new LinkedHashMap<String, Document>();
@@ -165,7 +166,7 @@ class MergeTest {
     }
 
     @Test
-    void flushesTheLargestBufferBeyondTheBudget() throws InterruptedException {
+    void flushesTheLargestBufferBeyondTheBudget() throws InterruptedException, IOException {
         var random = new Random(6);
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, 256 << 10);
         var documents = new ArrayList<Document>();
@@ -175,11 +176,11 @@ class MergeTest {
         var threads = new ArrayList<Thread>();
         for (var t = 0; t < 4; t++) {
             var first = t * 1000;
-            threads.add(Thread.ofPlatform().start(() -> {
+            threads.add(Thread.ofPlatform().start(Indexes.unchecked(() -> {
                 for (var i = first; i < first + 1000; i++) {
                     writer.add(documents.get(i));
                 }
-            }));
+            })));
         }
         for (var thread : threads) {
             thread.join();
@@ -193,13 +194,13 @@ class MergeTest {
         assertThat(live(snapshot)).hasSize(4000);
     }
 
-    private static void add(IndexWriter writer, Map<String, Document> model, Document document) {
+    private static void add(IndexWriter writer, Map<String, Document> model, Document document) throws IOException {
         writer.add(document);
         model.remove(document.key());
         model.put(document.key(), document);
     }
 
-    private static void delete(IndexWriter writer, Map<String, Document> model, String key) {
+    private static void delete(IndexWriter writer, Map<String, Document> model, String key) throws IOException {
         writer.delete(key);
         model.remove(key);
     }

@@ -13,7 +13,6 @@ import java.util.TreeSet;
 import java.util.function.BooleanSupplier;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
-import org.jspecify.annotations.Nullable;
 
 /// Merges segments into one, dropping their deleted documents. The documents keep their order: those of the
 /// first segment, then those of the second, and so on.
@@ -76,9 +75,10 @@ public final class SegmentMerger {
     /// @param docMaps their [#docMaps]
     /// @param maxDoc the number of documents the maps keep, at least 1
     /// @param stop whether to give up, checked from time to time
-    /// @return the merged segment's bytes, or `null` if `stop` said to give up
-    public byte @Nullable [] merge(List<Input> inputs, List<int[]> docMaps, int maxDoc, BooleanSupplier stop) {
-        var writer = new SegmentWriter(maxDoc, storedFields, deflater);
+    /// @param sink where the merged segment goes
+    /// @return whether the segment was written, rather than given up because `stop` said so
+    public boolean merge(List<Input> inputs, List<int[]> docMaps, int maxDoc, BooleanSupplier stop, SegmentSink sink) {
+        var writer = new SegmentWriter(maxDoc, storedFields, deflater, sink);
         var names = new TreeSet<String>();
         for (var input : inputs) {
             input.segment().fields().forEach(field -> names.add(field.name()));
@@ -86,7 +86,7 @@ public final class SegmentMerger {
         var norms = new HashMap<String, byte[]>();
         for (var name : names) {
             if (stop.getAsBoolean() || !mergeField(name, inputs, docMaps, maxDoc, norms, writer, stop)) {
-                return null;
+                return false;
             }
         }
         for (var i = 0; i < inputs.size(); i++) {
@@ -100,11 +100,12 @@ public final class SegmentMerger {
         }
         for (var i = 0; i < inputs.size(); i++) {
             if (stop.getAsBoolean()) {
-                return null;
+                return false;
             }
             mergeStored(inputs.get(i).segment(), docMaps.get(i), writer);
         }
-        return writer.finish();
+        writer.finish();
+        return true;
     }
 
     // Returns false if stop said to give up.

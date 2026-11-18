@@ -75,7 +75,7 @@ public class RefreshBenchmark {
     }
 
     // JMH needs a constructor without checked exceptions.
-    private static Writer writer(Index index) {
+    static Writer writer(Index index) {
         try {
             return index.writer();
         } catch (IOException e) {

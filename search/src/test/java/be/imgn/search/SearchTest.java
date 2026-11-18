@@ -5,9 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.EnumSource;
 
+@ParameterizedClass
+@EnumSource(StorageKind.class)
 class SearchTest {
 
     private static final Schema SCHEMA = Schema.builder()
@@ -18,6 +24,13 @@ class SearchTest {
 
     // N = 3 titles of lengths 1, 3 and 2: average 2. "fox" and "dog" are in 2 titles each.
     private static final double IDF = Math.log(1 + (3 - 2 + 0.5) / (2 + 0.5));
+    private final StorageKind storage;
+    private final Path directory;
+
+    SearchTest(StorageKind storage, @TempDir Path directory) {
+        this.storage = storage;
+        this.directory = directory;
+    }
 
     @Test
     void scoresTermsWithBm25() throws IOException {
@@ -91,7 +104,7 @@ class SearchTest {
 
     @Test
     void neverMatchesAPhraseAcrossTwoValues() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(Document.builder("x")
                         .text("title", "quick fox")
@@ -183,7 +196,7 @@ class SearchTest {
 
     @Test
     void keepsDocumentOrderAmongEqualScores() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 for (var key : List.of("k3", "k1", "k2", "k0")) {
                     writer.add(Document.builder(key).text("title", "same words").build());
@@ -202,7 +215,7 @@ class SearchTest {
 
     @Test
     void advancesPastTheOnlyBlockOfATerm() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(Document.builder("k0").text("title", "bravo").build());
                 writer.add(Document.builder("k1").text("title", "bravo").build());
@@ -216,7 +229,7 @@ class SearchTest {
 
     @Test
     void forgetsThePreviousSegmentWhenItReusesAnIterator() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 for (var i = 0; i < 10; i++) {
                     writer.add(Document.builder("s1-" + i)
@@ -273,15 +286,15 @@ class SearchTest {
 
     @Test
     void searchesAnEmptyIndex() throws IOException {
-        try (var index = Index.inMemory(SCHEMA);
+        try (var index = storage.open(SCHEMA, directory);
                 var searcher = index.searcher()) {
             assertThat(searcher.search(Query.term("title", "fox"), 10)).isEmpty();
         }
     }
 
     // a: "fox", b: "fox fox dog", c: "dog cat", each in its own segment if asked.
-    private static Index index(boolean segmentPerDocument) throws IOException {
-        var index = Index.inMemory(SCHEMA);
+    private Index index(boolean segmentPerDocument) throws IOException {
+        var index = storage.open(SCHEMA, directory);
         try (var writer = index.writer()) {
             writer.add(Document.builder("a")
                     .text("title", "fox")

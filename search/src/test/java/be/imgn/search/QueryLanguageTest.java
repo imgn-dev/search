@@ -10,11 +10,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class QueryLanguageTest {
 
@@ -379,11 +383,13 @@ class QueryLanguageTest {
         assertThatThrownBy(() -> lenient.apply(null)).isInstanceOf(NullPointerException.class);
     }
 
-    @Test
-    void parsesRandomInputLenientlyIntoSearchableQueries() throws IOException {
+    @ParameterizedTest
+    @EnumSource(StorageKind.class)
+    void parsesRandomInputLenientlyIntoSearchableQueries(StorageKind storage, @TempDir Path directory)
+            throws IOException {
         var random = new Random(20_261_118);
         for (var schema : List.of(SCHEMA, NO_DEFAULTS)) {
-            try (var index = Index.inMemory(schema)) {
+            try (var index = storage.open(schema, directory)) {
                 try (var writer = index.writer()) {
                     writer.add(Document.builder("x")
                             .text("title", "le renard é 中 12 30")
@@ -406,9 +412,10 @@ class QueryLanguageTest {
         }
     }
 
-    @Test
-    void searchesThroughTheParser() throws IOException {
-        try (var index = Index.inMemory(SCHEMA)) {
+    @ParameterizedTest
+    @EnumSource(StorageKind.class)
+    void searchesThroughTheParser(StorageKind storage, @TempDir Path directory) throws IOException {
+        try (var index = storage.open(SCHEMA, directory)) {
             try (var writer = index.writer()) {
                 writer.add(Document.builder("a")
                         .text("title", "The quick fox")

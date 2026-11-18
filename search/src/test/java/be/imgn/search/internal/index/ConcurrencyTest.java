@@ -10,6 +10,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import be.imgn.search.internal.index.Indexes.Operation;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
@@ -35,7 +36,7 @@ class ConcurrencyTest {
     private final Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
 
     @Test
-    void endsEverySnapshotWithTheLastOperationOfEachKeyUpToItsCut() throws InterruptedException {
+    void endsEverySnapshotWithTheLastOperationOfEachKeyUpToItsCut() throws InterruptedException, IOException {
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, 32 << 10, EAGER);
         var latest = new AtomicReference<>(Snapshot.EMPTY);
         var operations = new ConcurrentLinkedQueue<Operation>();
@@ -101,10 +102,10 @@ class ConcurrencyTest {
         assertThat(versions(merged)).isEqualTo(all);
     }
 
-    private Thread start(Runnable task) {
+    private Thread start(Indexes.IoTask task) {
         return Thread.ofPlatform()
                 .uncaughtExceptionHandler((thread, failure) -> failures.add(failure))
-                .start(task);
+                .start(Indexes.unchecked(task));
     }
 
     private static void join(List<Thread> threads) throws InterruptedException {

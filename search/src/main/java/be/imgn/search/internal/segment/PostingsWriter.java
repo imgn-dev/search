@@ -5,6 +5,7 @@ import static be.imgn.search.internal.codec.BitPacking.BLOCK;
 import be.imgn.search.internal.codec.BitPacking;
 import be.imgn.search.internal.codec.ByteOutput;
 import be.imgn.search.internal.codec.Norms;
+import be.imgn.search.internal.codec.Output;
 import org.jspecify.annotations.Nullable;
 
 /// Writes the postings and positions of terms.
@@ -58,10 +59,10 @@ public final class PostingsWriter {
             int docFreq,
             int @Nullable [] positions,
             byte @Nullable [] norms,
-            ByteOutput postings,
-            ByteOutput positionsOut) {
-        var postingsOffset = postings.size();
-        var positionsOffset = positions == null ? 0 : positionsOut.size();
+            Output postings,
+            Output positionsOut) {
+        var postingsOffset = postings.position();
+        var positionsOffset = positions == null ? 0 : positionsOut.position();
         var blockCount = (docFreq + BLOCK - 1) / BLOCK;
         blocks.reset();
         skip.reset();
@@ -74,7 +75,7 @@ public final class PostingsWriter {
             var from = b * BLOCK;
             var to = Math.min(docFreq, from + BLOCK);
             var blockOffset = blocks.size();
-            var blockPositionsOffset = positions == null ? 0 : positionsOut.size() - positionsOffset;
+            var blockPositionsOffset = positions == null ? 0 : positionsOut.position() - positionsOffset;
             var blockMaxFreq = 0;
             var blockMinNorm = norms == null ? 0 : Norms.MAX;
             for (var i = from; i < to; i++) {
@@ -134,7 +135,7 @@ public final class PostingsWriter {
     }
 
     // Returns the number of positions written so far, which is also the index of the next one.
-    private long writePositions(int[] freqs, int from, int to, int @Nullable [] positions, long upto, ByteOutput out) {
+    private long writePositions(int[] freqs, int from, int to, int @Nullable [] positions, long upto, Output out) {
         var next = upto;
         for (var i = from; i < to; i++) {
             if (positions != null) {
@@ -154,7 +155,7 @@ public final class PostingsWriter {
         return next;
     }
 
-    private static void writePacked(int[] values, ByteOutput out) {
+    private static void writePacked(int[] values, Output out) {
         var width = BitPacking.width(values, BLOCK);
         out.writeByte(width);
         BitPacking.pack(values, width, out);

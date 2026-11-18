@@ -3,6 +3,7 @@ package be.imgn.search.internal.segment;
 import be.imgn.search.internal.codec.ByteOutput;
 import be.imgn.search.internal.codec.Format;
 import be.imgn.search.internal.codec.IntSorter;
+import be.imgn.search.internal.codec.Output;
 import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.zip.Deflater;
 import org.jspecify.annotations.Nullable;
 
-/// Writes a segment into one array.
+/// Writes a segment into a [SegmentSink]: its sections first, each in an output of its own, then the segment.
 ///
 /// The segment is a [header][Format], then its sections: postings, positions, term dictionaries, norms, keys
 /// (offsets, bytes, then a dictionary from key to document) and stored fields; then the directory that locates
@@ -33,10 +34,11 @@ public final class SegmentWriter {
 
     private final int maxDoc;
     private final List<String> storedFields;
-    private final ByteOutput postings = new ByteOutput();
-    private final ByteOutput positions = new ByteOutput();
-    private final ByteOutput dictionaries = new ByteOutput();
-    private final ByteOutput norms = new ByteOutput();
+    private final SegmentSink sink;
+    private final Output postings;
+    private final Output positions;
+    private final Output dictionaries;
+    private final Output norms;
     private final ByteOutput fields = new ByteOutput();
     private final PostingsWriter postingsWriter = new PostingsWriter();
     private final StoredFieldsWriter stored;
@@ -54,10 +56,16 @@ public final class SegmentWriter {
     /// @param maxDoc the number of documents
     /// @param storedFields the names of the fields the stored records refer to by index
     /// @param deflater the compressor of the stored fields
-    public SegmentWriter(int maxDoc, List<String> storedFields, Deflater deflater) {
+    /// @param sink where the sections and the segment go
+    public SegmentWriter(int maxDoc, List<String> storedFields, Deflater deflater, SegmentSink sink) {
         this.maxDoc = maxDoc;
         this.storedFields = List.copyOf(storedFields);
-        this.stored = new StoredFieldsWriter(deflater);
+        this.sink = sink;
+        this.postings = sink.newSection();
+        this.positions = sink.newSection();
+        this.dictionaries = sink.newSection();
+        this.norms = sink.newSection();
+        this.stored = new StoredFieldsWriter(deflater, sink.newSection());
     }
 
     /// Starts a field; its terms follow in increasing order of their bytes.
@@ -100,7 +108,7 @@ public final class SegmentWriter {
         var normsOffset = 0L;
         var fieldNormsNow = fieldNorms;
         if (ownNorms && fieldNormsNow != null) {
-            normsOffset = norms.size();
+            normsOffset = norms.position();
             norms.writeBytes(fieldNormsNow, 0, maxDoc);
         }
         fields.writeString(fieldName);
@@ -139,51 +147,49 @@ public final class SegmentWriter {
         stored.addBlock(raw, count);
     }
 
-    /// Writes the segment.
-    ///
-    /// @return the segment's bytes
-    public byte[] finish() {
+    /// Writes the segment into the [sink][SegmentSink#newSegment]: the header, the sections, the keys, the
+    /// directory and the checksum.
+    public void finish() {
         var storedBytes = stored.finish();
-        var out = new ByteOutput(Format.HEADER_SIZE
-                + postings.size()
-                + positions.size()
-                + dictionaries.size()
-                + norms.size()
-                + storedBytes.size()
-                + keys.size() * (Long.BYTES + Long.BYTES)
+        var out = sink.newSegment(Format.HEADER_SIZE
+                + postings.position()
+                + positions.position()
+                + dictionaries.position()
+                + norms.position()
+                + storedBytes.position()
+                + (long) keys.size() * (Long.BYTES + Long.BYTES)
                 + fields.size());
         Format.writeHeader(out, Format.SEGMENT_MAGIC);
         var directory = new ByteOutput();
         directory.writeVInt(maxDoc);
         for (var section : List.of(postings, positions, dictionaries, norms)) {
-            directory.writeVLong(out.size());
-            out.writeBytes(section);
+            directory.writeVLong(out.position());
+            section.writeTo(out);
         }
         directory.writeVInt(fieldCount);
         directory.writeBytes(fields);
         writeKeys(out, directory);
         directory.writeVInt(storedFields.size());
         storedFields.forEach(directory::writeString);
-        directory.writeVLong(out.size());
-        directory.writeVLong(out.size() + stored.indexOffset());
+        directory.writeVLong(out.position());
+        directory.writeVLong(out.position() + stored.indexOffset());
         directory.writeVInt(stored.blockCount());
-        out.writeBytes(storedBytes);
-        var directoryOffset = out.size();
+        storedBytes.writeTo(out);
+        var directoryOffset = out.position();
         out.writeBytes(directory);
         out.writeLong(directoryOffset);
         Format.writeChecksum(out);
-        return out.toByteArray();
     }
 
-    private void writeKeys(ByteOutput out, ByteOutput directory) {
-        directory.writeVLong(out.size());
+    private void writeKeys(Output out, ByteOutput directory) {
+        directory.writeVLong(out.position());
         long offset = 0;
         out.writeLong(offset);
         for (var key : keys) {
             offset += key.length;
             out.writeLong(offset);
         }
-        directory.writeVLong(out.size());
+        directory.writeVLong(out.position());
         for (var key : keys) {
             out.writeBytes(key, 0, key.length);
         }

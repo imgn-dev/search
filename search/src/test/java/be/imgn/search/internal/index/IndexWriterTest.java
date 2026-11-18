@@ -7,6 +7,7 @@ import be.imgn.search.Document;
 import be.imgn.search.Positions;
 import be.imgn.search.Schema;
 import be.imgn.search.Stored;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ class IndexWriterTest {
             .build();
 
     @Test
-    void flushesTheBufferBeyondItsBudgetAndKeepsDeletesInOrder() {
+    void flushesTheBufferBeyondItsBudgetAndKeepsDeletesInOrder() throws IOException {
         // A budget of one byte: every add becomes a segment of its own.
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, 1);
         writer.add(document("a", "one"));
@@ -36,7 +37,7 @@ class IndexWriterTest {
     }
 
     @Test
-    void dropsTheDocumentsReplacedInTheBuffer() {
+    void dropsTheDocumentsReplacedInTheBuffer() throws IOException {
         var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
         writer.add(document("a", "one"));
         writer.add(document("b", "one"));
@@ -51,7 +52,7 @@ class IndexWriterTest {
     }
 
     @Test
-    void continuesFromASnapshot() {
+    void continuesFromASnapshot() throws IOException {
         var first = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
         first.add(document("a", "one"));
         first.add(document("b", "one"));

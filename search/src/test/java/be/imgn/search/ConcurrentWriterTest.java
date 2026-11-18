@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +17,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.EnumSource;
 
+@ParameterizedClass
+@EnumSource(StorageKind.class)
 class ConcurrentWriterTest {
 
     private static final Schema SCHEMA = Schema.builder()
@@ -33,13 +39,20 @@ class ConcurrentWriterTest {
     private static final int DELETED_PER_OWNER = 5;
 
     private final Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
+    private final StorageKind storage;
+    private final Path directory;
+
+    ConcurrentWriterTest(StorageKind storage, @TempDir Path directory) {
+        this.storage = storage;
+        this.directory = directory;
+    }
 
     /// Each owner thread adds, replaces and deletes its own keys, so their order is known; once an owner is done, a
     /// deleter deletes some of its keys, after all of the owner's operations. Refreshes and searches run meanwhile,
     /// and a small budget makes many segments, which merge.
     @Test
     void endsWithTheLastOperationOfEachKey() throws IOException, InterruptedException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             var expected = new ConcurrentHashMap<String, String>();
             var writer = index.writer(32 << 10);
             var done = new CountDownLatch[OWNERS];
@@ -93,7 +106,7 @@ class ConcurrentWriterTest {
 
     @Test
     void searchesFromSeveralThreadsGiveWhatOneThreadGives() throws IOException, InterruptedException {
-        try (var index = Index.inMemory(SCHEMA)) {
+        try (var index = storage.open(SCHEMA, directory)) {
             var random = new Random(7);
             try (var writer = index.writer()) {
                 for (var i = 0; i < 3000; i++) {

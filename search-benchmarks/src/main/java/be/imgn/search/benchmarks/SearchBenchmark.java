@@ -5,6 +5,7 @@ import be.imgn.search.Index;
 import be.imgn.search.Query;
 import be.imgn.search.Searcher;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -20,7 +21,8 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 
-/// Searching an in-memory index of [#DOCUMENTS] [generated documents][GeneratedText] in [#SEGMENTS] segments,
+/// Searching an index, in memory or in files, of [#DOCUMENTS] [generated documents][GeneratedText] in [#SEGMENTS]
+/// segments,
 /// top [k][#k], in microseconds per query.
 ///
 /// The query shapes, on the body: `rare` and `common` terms, `allCommon` and `anyCommon` of two common terms,
@@ -50,6 +52,11 @@ public class SearchBenchmark {
     @Param({"10", "1000"})
     private int k = TOP_10;
 
+    @Param({Storages.MEMORY, Storages.FILES})
+    private String storage = Storages.MEMORY;
+
+    private Path directory = Path.of("");
+
     private Index index = Index.inMemory(GeneratedText.SCHEMA);
     private Searcher searcher = index.searcher();
     private Query query = Query.term("body", "");
@@ -57,6 +64,10 @@ public class SearchBenchmark {
     @Setup
     public void setUp() throws IOException {
         var text = new GeneratedText();
+        searcher.close();
+        index.close();
+        directory = Storages.newDirectory();
+        index = Storages.open(storage, directory);
         var perSegment = DOCUMENTS / SEGMENTS;
         try (var writer = index.writer()) {
             for (var segment = 0; segment < SEGMENTS; segment++) {
@@ -84,6 +95,7 @@ public class SearchBenchmark {
     public void tearDown() throws IOException {
         searcher.close();
         index.close();
+        Storages.delete(directory);
     }
 
     @Benchmark

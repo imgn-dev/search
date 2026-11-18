@@ -4,12 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.EnumSource;
 
+@ParameterizedClass
+@EnumSource(StorageKind.class)
 class LanguageTest {
 
     private final List<String> detected = new ArrayList<>();
@@ -28,10 +34,17 @@ class LanguageTest {
             .languages(List.of(ToyAnalyzer.FRENCH, ToyAnalyzer.ENGLISH))
             .languageDetector(detector, 0.8)
             .build();
+    private final StorageKind storage;
+    private final Path directory;
+
+    LanguageTest(StorageKind storage, @TempDir Path directory) {
+        this.storage = storage;
+        this.directory = directory;
+    }
 
     @Test
     void routesAValueInItsOwnLanguage() throws IOException {
-        try (var index = Index.inMemory(schema)) {
+        try (var index = storage.open(schema, directory)) {
             add(
                     index,
                     Document.builder("x")
@@ -48,7 +61,7 @@ class LanguageTest {
 
     @Test
     void routesAValueInTheDocumentsLanguageUnlessItHasItsOwn() throws IOException {
-        try (var index = Index.inMemory(schema)) {
+        try (var index = storage.open(schema, directory)) {
             add(
                     index,
                     Document.builder("x")
@@ -66,7 +79,7 @@ class LanguageTest {
 
     @Test
     void detectsTheLanguageOfADocumentFromItsValuesWithoutOne() throws IOException {
-        try (var index = Index.inMemory(schema)) {
+        try (var index = storage.open(schema, directory)) {
             add(
                     index,
                     Document.builder("x")
@@ -94,7 +107,7 @@ class LanguageTest {
 
     @Test
     void givesNoLanguageBelowTheThreshold() throws IOException {
-        try (var index = Index.inMemory(schema)) {
+        try (var index = storage.open(schema, directory)) {
             add(index, Document.builder("x").text("title", "the foxes").build());
 
             assertThat(search(index, Locale.ENGLISH, "fox")).isEmpty();
@@ -109,7 +122,7 @@ class LanguageTest {
 
     @Test
     void keepsALanguageWithoutAnAnalyzerInTheNeutralFieldOnly() throws IOException {
-        try (var index = Index.inMemory(schema)) {
+        try (var index = storage.open(schema, directory)) {
             add(
                     index,
                     Document.builder("x")
@@ -129,7 +142,7 @@ class LanguageTest {
 
     @Test
     void scoresTheBestOfTheNeutralAndLanguageVariants() throws IOException {
-        try (var index = Index.inMemory(schema)) {
+        try (var index = storage.open(schema, directory)) {
             add(
                     index,
                     Document.builder("one")
@@ -158,7 +171,7 @@ class LanguageTest {
 
     @Test
     void searchesATermOfSeveralWordsInTheNeutralFieldOnly() throws IOException {
-        try (var index = Index.inMemory(schema)) {
+        try (var index = storage.open(schema, directory)) {
             add(
                     index,
                     Document.builder("x")

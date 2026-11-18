@@ -1,6 +1,7 @@
 package be.imgn.search.internal.segment;
 
 import be.imgn.search.internal.codec.ByteOutput;
+import be.imgn.search.internal.codec.Output;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.Arrays;
@@ -19,7 +20,7 @@ public final class StoredFieldsWriter {
 
     static final int INDEX_ENTRY_SIZE = Integer.BYTES + Long.BYTES;
 
-    private final ByteOutput out = new ByteOutput();
+    private final Output out;
     private final ByteOutput index = new ByteOutput();
     private final ByteOutput sizes = new ByteOutput();
     private final ByteOutput records = new ByteOutput();
@@ -29,13 +30,15 @@ public final class StoredFieldsWriter {
     private int documents;
     private int blockDocuments;
     private int blockCount;
-    private int indexOffset;
+    private long indexOffset;
 
-    /// A writer that compresses with `deflater`.
+    /// A writer that compresses with `deflater` into `out`.
     ///
     /// @param deflater the compressor, reset before each block
-    public StoredFieldsWriter(Deflater deflater) {
+    /// @param out the receiver of the stored fields, empty
+    public StoredFieldsWriter(Deflater deflater, Output out) {
         this.deflater = deflater;
+        this.out = out;
     }
 
     /// Adds the next document's record.
@@ -62,7 +65,7 @@ public final class StoredFieldsWriter {
             flush();
         }
         index.writeInt(documents);
-        index.writeLong(out.size());
+        index.writeLong(out.position());
         var bytes = raw.toArray(ValueLayout.JAVA_BYTE);
         out.writeBytes(bytes, 0, bytes.length);
         documents += count;
@@ -72,11 +75,11 @@ public final class StoredFieldsWriter {
     /// Writes the last block and the index.
     ///
     /// @return the stored fields, whose index starts at [#indexOffset()]
-    public ByteOutput finish() {
+    public Output finish() {
         if (blockDocuments > 0) {
             flush();
         }
-        indexOffset = out.size();
+        indexOffset = out.position();
         out.writeBytes(index);
         return out;
     }
@@ -84,7 +87,7 @@ public final class StoredFieldsWriter {
     /// The offset of the index in the stored fields, once [#finish()]ed.
     ///
     /// @return the offset
-    public int indexOffset() {
+    public long indexOffset() {
         return indexOffset;
     }
 
@@ -97,7 +100,7 @@ public final class StoredFieldsWriter {
 
     private void flush() {
         index.writeInt(documents - blockDocuments);
-        index.writeLong(out.size());
+        index.writeLong(out.position());
         block.reset();
         block.writeVInt(blockDocuments);
         block.writeBytes(sizes);

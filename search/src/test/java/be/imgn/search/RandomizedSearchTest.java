@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -13,9 +14,14 @@ import java.util.function.ToIntFunction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.EnumSource;
 
 /// Compares searches over several segments, with blocks and skip tables, against scores computed by brute force.
 /// Titles are shorter than 24 words, so their norms are exact.
+@ParameterizedClass
+@EnumSource(StorageKind.class)
 class RandomizedSearchTest {
 
     private static final Schema SCHEMA = Schema.builder()
@@ -32,7 +38,11 @@ class RandomizedSearchTest {
     private final List<List<String>> titles = new ArrayList<>();
     private final Map<String, Double> idfs = new HashMap<>();
     private double average;
-    private final Index index = Index.inMemory(SCHEMA);
+    private final Index index;
+
+    RandomizedSearchTest(StorageKind storage, @TempDir Path directory) throws IOException {
+        this.index = storage.open(SCHEMA, directory);
+    }
 
     @BeforeEach
     void setUp() throws IOException {

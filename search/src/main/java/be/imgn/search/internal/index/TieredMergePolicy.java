@@ -22,7 +22,7 @@ import java.util.stream.IntStream;
 record TieredMergePolicy(long maxSegmentBytes, int segmentsPerTier, int maxMergeAtOnce, long floorBytes) {
 
     /// The policy of the in-memory index: segments of at most 1 GiB, 10 per tier, merged 10 at a time, sizes
-    /// floored at 2 MiB.
+    /// floored at 2 MiB. A file index allows larger segments: see [#withMaxSegmentBytes].
     static final TieredMergePolicy DEFAULT = new TieredMergePolicy(1L << 30, 10, 10, 2L << 20);
 
     /// The share of [#maxSegmentBytes] the segments of a merge may total. A merged segment is usually smaller
@@ -34,6 +34,14 @@ record TieredMergePolicy(long maxSegmentBytes, int segmentsPerTier, int maxMerge
 
     // A slight preference for smaller merges, as Lucene's.
     private static final double SIZE_EXPONENT = 0.05;
+
+    /// This policy with another largest segment, as the storage allows.
+    ///
+    /// @param bytes the largest segment a merge makes
+    /// @return the policy
+    TieredMergePolicy withMaxSegmentBytes(long bytes) {
+        return new TieredMergePolicy(bytes, segmentsPerTier, maxMergeAtOnce, floorBytes);
+    }
 
     /// The best merge of some segments, if they need one.
     ///

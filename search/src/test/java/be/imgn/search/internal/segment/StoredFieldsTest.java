@@ -16,7 +16,8 @@ class StoredFieldsTest {
     @Test
     void roundTripsRecordsAcrossBlocks() {
         var deflater = new Deflater(Deflater.BEST_SPEED);
-        var writer = new StoredFieldsWriter(deflater);
+        var bytes = new ByteOutput();
+        var writer = new StoredFieldsWriter(deflater, bytes);
         var record = new ByteOutput();
         var count = 3000;
         for (var doc = 0; doc < count; doc++) {
@@ -33,7 +34,7 @@ class StoredFieldsTest {
             }
             writer.add(record.array(), 0, record.size());
         }
-        var bytes = writer.finish();
+        writer.finish();
         deflater.end();
         assertThat(writer.blockCount()).isGreaterThan(2);
 

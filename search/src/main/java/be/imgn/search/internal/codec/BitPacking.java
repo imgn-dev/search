@@ -46,7 +46,7 @@ public final class BitPacking {
     /// @param values the values, each fitting in `width` bits
     /// @param width the width, from 0 to 32
     /// @param out the receiver of the [#bytes] bytes
-    public static void pack(int[] values, int width, ByteOutput out) {
+    public static void pack(int[] values, int width, Output out) {
         if (width == 0) {
             return;
         }
