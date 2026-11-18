@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- child.project.url.inherit.append.path: the attribute is not inherited once <url> is redefined here, so it is
+     repeated; otherwise Maven appends each module's artifactId to the URL. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"
+         child.project.url.inherit.append.path="false">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>be.imgn.parent</groupId>
+    <artifactId>parent</artifactId>
+    <version>2026-11-01</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>be.imgn.search</groupId>
+  <artifactId>search-parent</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>Search parent</name>
+  <description>Build configuration shared by the search modules.</description>
+  <!-- The parent's url and scm point at the parent's own repository. -->
+  <url>https://github.com/imgn-dev/search</url>
+
+  <scm child.scm.connection.inherit.append.path="false"
+       child.scm.developerConnection.inherit.append.path="false"
+       child.scm.url.inherit.append.path="false">
+    <connection>scm:git:https://github.com/imgn-dev/search.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/imgn-dev/search.git</developerConnection>
+    <url>https://github.com/imgn-dev/search</url>
+    <tag>HEAD</tag>
+  </scm>
+
+</project>
