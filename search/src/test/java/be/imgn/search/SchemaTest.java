@@ -171,5 +171,11 @@ class SchemaTest {
                 .hasMessageContaining("text field");
     }
 
-    private record Analyzer(Locale language, String id) implements LanguageAnalyzer {}
+    private record Analyzer(Locale language, String id) implements LanguageAnalyzer {
+
+        @Override
+        public WordAnalyzer newWordAnalyzer() {
+            return word -> {};
+        }
+    }
 }

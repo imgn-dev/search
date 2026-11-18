@@ -69,6 +69,7 @@ The core's tokenizer is written by hand for the Latin, Greek and Cyrillic script
   (U+2019) is read as `'`: NFKC does not unify them, and Snowball knows only `'`.
 - Other punctuation, hyphens included, separates words: `COVID-19` gives `covid` and `19`, and `e-mail` gives
   `e` and `mail`.
+- A word longer than 255 characters, such as an encoded blob, is skipped.
 - Runs of other scripts are split the same way, which is crude but harmless.
 
 ### Normalization
@@ -76,7 +77,7 @@ The core's tokenizer is written by hand for the Latin, Greek and Cyrillic script
 Each token is:
 
 1. normalized with NFKC (`java.text.Normalizer`), which also folds full-width and half-width forms;
-2. lowercased with `Locale.ROOT`, never the default locale;
+2. lowercased character by character (`Character.toLowerCase`), never with the default locale;
 3. case-folded where lowercasing is not enough: `ß` becomes `ss`, so `STRASSE` matches `straße`, and the final
    sigma `ς` becomes `σ`;
 4. stripped of its accents, only for text fields that ask for it: NFD then dropping combining marks, plus a

@@ -21,4 +21,9 @@ public interface LanguageAnalyzer {
     ///
     /// @return the identifier, not empty
     String id();
+
+    /// A new analyzer of words in this language, for the calling thread only.
+    ///
+    /// @return a new word analyzer
+    WordAnalyzer newWordAnalyzer();
 }

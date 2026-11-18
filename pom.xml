@@ -36,6 +36,8 @@
 
   <modules>
     <module>search</module>
+    <!-- Not published: the JMH benchmarks. -->
+    <module>search-benchmarks</module>
   </modules>
 
   <properties>
@@ -51,5 +53,23 @@
       </dependency>
     </dependencies>
   </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <!-- Only search-benchmarks runs something with exec, so that the reactor can build what the
+             benchmarks need and run them in one command. -->
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <configuration>
+            <skip>true</skip>
+            <!-- Checked before skip is. -->
+            <executable>java</executable>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
 
 </project>
