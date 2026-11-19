@@ -37,6 +37,9 @@
   <modules>
     <module>search</module>
     <module>search-snowball</module>
+    <module>search-langdetect</module>
+    <!-- Not published: the training tool of search-langdetect. -->
+    <module>search-langdetect-training</module>
     <!-- Not published: the JMH benchmarks. -->
     <module>search-benchmarks</module>
   </modules>

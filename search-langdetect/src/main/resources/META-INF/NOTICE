@@ -1,0 +1,9 @@
+Search language detector
+
+The language model of this module (be/imgn/search/langdetect/internal/languages.model)
+is derived from sentences of Tatoeba (https://tatoeba.org), released under the
+Creative Commons Attribution 2.0 France licence (CC BY 2.0 FR,
+https://creativecommons.org/licenses/by/2.0/fr/).
+
+The held-out samples its tests use (src/test/resources) are Tatoeba sentences too,
+under the same licence.

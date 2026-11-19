@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>be.imgn.search</groupId>
+    <artifactId>search-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>search-langdetect-training</artifactId>
+
+  <name>Search language detector training</name>
+  <description>The training tool of the search language detector. Not published.</description>
+
+  <properties>
+    <!-- The path of Tatoeba's unpacked sentences.csv: the tool reads it, never the repository. -->
+    <training.corpus/>
+    <!-- Where the tool writes the model and the held-out samples: the sources of search-langdetect. -->
+    <training.model>${project.basedir}/../search-langdetect/src/main/resources/be/imgn/search/langdetect/internal/languages.model</training.model>
+    <training.samples>${project.basedir}/../search-langdetect/src/test/resources/be/imgn/search/langdetect/held-out.tsv</training.samples>
+    <!-- A command-line tool: printing its report is its job. -->
+    <errorprone.systemout.severity>OFF</errorprone.systemout.severity>
+    <maven.install.skip>true</maven.install.skip>
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>be.imgn.search</groupId>
+      <artifactId>search-langdetect</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>be.imgn.search</groupId>
+      <artifactId>search</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jspecify</groupId>
+      <artifactId>jspecify</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <!-- central-publishing-maven-plugin ignores maven.deploy.skip: only this keeps the module out of a
+             release bundle. -->
+        <plugin>
+          <groupId>org.sonatype.central</groupId>
+          <artifactId>central-publishing-maven-plugin</artifactId>
+          <configuration>
+            <excludeArtifacts>
+              <excludeArtifact>${project.artifactId}</excludeArtifact>
+            </excludeArtifacts>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <!-- ./mvnw -pl search-langdetect-training -am package exec:exec -DskipTests -Dtraining.corpus=<sentences.csv> -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <configuration>
+          <skip>false</skip>
+          <executable>java</executable>
+          <commandlineArgs>-Xmx4g -cp %classpath be.imgn.search.langdetect.training.Train ${training.corpus} ${training.model} ${training.samples}</commandlineArgs>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

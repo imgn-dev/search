@@ -1,0 +1,70 @@
+# Register texts of the training tool: news, science and other formal texts, written for this tool, in another
+# register than Tatoeba's short conversational sentences. The limits of the model must accept all of them.
+# Columns: language, text.
+de	Die Bundesregierung hat am Mittwoch einen Gesetzentwurf zur Reform der Energieversorgung beschlossen. Demnach sollen Netzbetreiber verpflichtet werden, bis 2030 erhebliche Investitionen in die Infrastruktur zu tätigen, während Verbraucherverbände vor steigenden Strompreisen warnen.
+fr	Le gouvernement a présenté mercredi un projet de loi visant à réformer l'approvisionnement énergétique. Les gestionnaires de réseau devront réaliser d'importants investissements d'ici 2030, tandis que les associations de consommateurs mettent en garde contre la hausse des prix de l'électricité.
+en	The government on Wednesday approved a draft law reforming the energy supply. Under the proposal, grid operators would be required to make substantial infrastructure investments by 2030, while consumer associations warn of rising electricity prices.
+ru	Правительство в среду одобрило законопроект о реформе энергоснабжения. Согласно документу, операторы сетей обязаны до 2030 года осуществить значительные инвестиции в инфраструктуру, тогда как общества защиты прав потребителей предупреждают о росте цен на электроэнергию.
+es	El Gobierno aprobó el miércoles un proyecto de ley para reformar el suministro energético. Según el texto, los operadores de red deberán realizar importantes inversiones en infraestructura antes de 2030, mientras que las asociaciones de consumidores advierten del aumento de los precios de la electricidad.
+it	Il governo ha approvato mercoledì un disegno di legge per riformare l'approvvigionamento energetico. Secondo il testo, i gestori della rete dovranno effettuare ingenti investimenti nelle infrastrutture entro il 2030, mentre le associazioni dei consumatori mettono in guardia contro l'aumento dei prezzi dell'elettricità.
+en	Photosynthesis is the process by which green plants and certain other organisms transform light energy into chemical energy. During photosynthesis in green plants, light energy is captured and used to convert water, carbon dioxide, and minerals into oxygen and energy-rich organic compounds.
+ru	Фотосинтез — сложный химический процесс преобразования энергии видимого света в энергию химических связей органических веществ при участии фотосинтетических пигментов.
+nl	De regering heeft woensdag een wetsvoorstel goedgekeurd voor de hervorming van de energievoorziening. Netbeheerders moeten volgens het voorstel tegen 2030 aanzienlijke investeringen in de infrastructuur doen, terwijl consumentenorganisaties waarschuwen voor stijgende elektriciteitsprijzen.
+pt	O governo aprovou na quarta-feira um projeto de lei para reformar o abastecimento de energia. Segundo o texto, os operadores de rede deverão realizar investimentos significativos em infraestrutura até 2030, enquanto as associações de consumidores alertam para o aumento dos preços da eletricidade.
+pl	Rząd przyjął w środę projekt ustawy reformującej zaopatrzenie w energię. Zgodnie z projektem operatorzy sieci będą zobowiązani do poniesienia znacznych nakładów inwestycyjnych na infrastrukturę do 2030 roku, podczas gdy organizacje konsumenckie ostrzegają przed wzrostem cen energii elektrycznej.
+sv	Regeringen godkände på onsdagen ett lagförslag om en reform av energiförsörjningen. Enligt förslaget ska nätoperatörerna göra betydande investeringar i infrastrukturen fram till 2030, medan konsumentorganisationer varnar för stigande elpriser.
+fi	Hallitus hyväksyi keskiviikkona lakiesityksen energiahuollon uudistamisesta. Esityksen mukaan verkkoyhtiöiden on tehtävä merkittäviä investointeja infrastruktuuriin vuoteen 2030 mennessä, kun taas kuluttajajärjestöt varoittavat sähkön hinnan noususta.
+cs	Vláda ve středu schválila návrh zákona o reformě zásobování energií. Podle návrhu budou provozovatelé sítí povinni do roku 2030 provést značné investice do infrastruktury, zatímco spotřebitelské organizace varují před růstem cen elektřiny.
+el	Κυβέρνηση ενέκρινε την Τετάρτη νομοσχέδιο για τη μεταρρύθμιση του ενεργειακού εφοδιασμού. Σύμφωνα με το σχέδιο, οι διαχειριστές δικτύων θα πρέπει να πραγματοποιήσουν σημαντικές επενδύσεις στις υποδομές έως το 2030.
+uk	Уряд у середу схвалив законопроєкт про реформу енергопостачання. Згідно з документом, оператори мереж мають до 2030 року здійснити значні інвестиції в інфраструктуру, тоді як організації захисту прав споживачів попереджають про зростання цін на електроенергію.
+en	The quick brown fox jumps over the lazy dog.
+en	Quarterly revenue rose by twelve percent, driven by strong demand in Asian markets.
+en	The committee will publish its final recommendations before the end of the year.
+fr	Le ministère de la Santé a publié jeudi de nouvelles recommandations sanitaires.
+fr	Les chercheurs ont observé une augmentation significative de la température moyenne.
+de	Die Forscher beobachteten einen deutlichen Anstieg der durchschnittlichen Temperatur.
+de	Das Gesundheitsministerium veröffentlichte am Donnerstag neue Empfehlungen.
+es	Los investigadores observaron un aumento significativo de la temperatura media.
+es	El Ministerio de Sanidad publicó el jueves nuevas recomendaciones sanitarias.
+it	I ricercatori hanno osservato un aumento significativo della temperatura media.
+it	Il ministero della Salute ha pubblicato giovedì nuove raccomandazioni sanitarie.
+pt	Os investigadores observaram um aumento significativo da temperatura média.
+pt	O Ministério da Saúde publicou na quinta-feira novas recomendações sanitárias.
+nl	De onderzoekers stelden een aanzienlijke stijging van de gemiddelde temperatuur vast.
+nl	Het ministerie van Volksgezondheid publiceerde donderdag nieuwe aanbevelingen.
+ru	Исследователи отметили значительное повышение средней температуры.
+ru	Министерство здравоохранения в четверг опубликовало новые рекомендации.
+uk	Дослідники зафіксували значне підвищення середньої температури.
+uk	Міністерство охорони здоров'я у четвер оприлюднило нові рекомендації.
+pl	Naukowcy zaobserwowali znaczący wzrost średniej temperatury.
+pl	Ministerstwo Zdrowia opublikowało w czwartek nowe zalecenia.
+cs	Vědci zaznamenali výrazný nárůst průměrné teploty.
+cs	Ministerstvo zdravotnictví ve čtvrtek zveřejnilo nová doporučení.
+sv	Forskarna observerade en betydande ökning av medeltemperaturen.
+sv	Socialdepartementet publicerade på torsdagen nya rekommendationer.
+da	Forskerne observerede en betydelig stigning i middeltemperaturen.
+da	Sundhedsministeriet offentliggjorde torsdag nye anbefalinger om vaccination af ældre borgere.
+no	Forskerne observerte en betydelig økning i gjennomsnittstemperaturen.
+no	Helsedepartementet publiserte torsdag nye anbefalinger om vaksinasjon av eldre.
+fi	Tutkijat havaitsivat keskilämpötilan merkittävän nousun.
+fi	Sosiaali- ja terveysministeriö julkaisi torstaina uudet suositukset.
+el	Οι ερευνητές παρατήρησαν σημαντική αύξηση της μέσης θερμοκρασίας.
+el	Το Υπουργείο Υγείας δημοσίευσε την Πέμπτη νέες συστάσεις.
+ro	Cercetătorii au observat o creștere semnificativă a temperaturii medii.
+ro	Ministerul Sănătății a publicat joi noi recomandări sanitare.
+ca	Els investigadors van observar un augment significatiu de la temperatura mitjana.
+ca	El Departament de Salut va publicar dijous noves recomanacions sanitàries.
+hu	A kutatók az átlaghőmérséklet jelentős emelkedését figyelték meg.
+hu	Az egészségügyi minisztérium csütörtökön új ajánlásokat tett közzé.
+sr	Istraživači su primetili značajan porast prosečne temperature.
+sr	Министарство здравља је у четвртак објавило нове препоруке.
+lt	Mokslininkai pastebėjo reikšmingą vidutinės temperatūros padidėjimą.
+lt	Sveikatos apsaugos ministerija ketvirtadienį paskelbė naujas rekomendacijas.
+et	Teadlased täheldasid keskmise temperatuuri märkimisväärset tõusu.
+et	Sotsiaalministeerium avaldas neljapäeval uued soovitused.
+eu	Ikertzaileek batez besteko tenperaturaren igoera nabarmena ikusi dute.
+eu	Osasun Sailak gomendio berriak argitaratu zituen ostegunean.
+ga	Thug na taighdeoirí faoi deara méadú suntasach ar an meánteocht.
+ga	D'fhoilsigh an Roinn Sláinte moltaí nua Déardaoin.
+eo	La esploristoj observis gravan kreskon de la meza temperaturo.
+eo	La Ministerio pri Sano publikigis novajn rekomendojn ĵaŭdon.
