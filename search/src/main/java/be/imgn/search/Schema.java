@@ -192,7 +192,7 @@ public final class Schema {
                         field.name()));
             }
             var kindMatches = switch (field) {
-                case Document.Text _ -> definition instanceof TextField;
+                case Document.Text _, Document.TextSource _ -> definition instanceof TextField;
                 case Document.Keyword _ -> definition instanceof KeywordField;
             };
             checkArgument(
@@ -207,7 +207,7 @@ public final class Schema {
 
     private static String kind(Document.Field field) {
         return switch (field) {
-            case Document.Text _ -> "text";
+            case Document.Text _, Document.TextSource _ -> "text";
             case Document.Keyword _ -> "keyword";
         };
     }

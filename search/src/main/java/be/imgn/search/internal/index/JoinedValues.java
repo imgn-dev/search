@@ -3,29 +3,38 @@ package be.imgn.search.internal.index;
 import static java.util.Objects.checkFromToIndex;
 import static java.util.Objects.checkIndex;
 
-/// Text values, each followed by a line feed, read where they are rather than copied: the language detector reads
-/// only a sample of a document, so copying all of a large document's values would cost more than detecting.
+/// Text values, each followed by a line feed, read where they are rather than copied, and cut after a number of
+/// chars: the language detector reads only the start of a document, so copying all of a large document's values
+/// would cost more than detecting. The values are strings, or views over the starts of the sources read for
+/// detection; each is read in bulk by `CharSequence.getChars`.
 ///
 /// Not thread-safe: it remembers the value it last read, so that reading forward costs no search.
 final class JoinedValues implements CharSequence {
 
-    private final String[] values;
-    // Where each value starts in the text, then the text's length.
+    private final CharSequence[] values;
+    // Where each value starts in the joined values, then where they end.
     private final int[] starts;
+    private final int length;
     private int current;
 
     /// Joins `values`, which it keeps without copying; at least one.
-    JoinedValues(String[] values) {
+    JoinedValues(CharSequence[] values) {
+        this(values, Integer.MAX_VALUE);
+    }
+
+    /// Joins `values`, which it keeps without copying, and cuts the text after `limit` chars; at least one value.
+    JoinedValues(CharSequence[] values, int limit) {
         this.values = values;
         starts = new int[values.length + 1];
         for (var i = 0; i < values.length; i++) {
-            starts[i + 1] = starts[i] + values[i].length() + 1;
+            starts[i + 1] = (int) Math.min((long) starts[i] + values[i].length() + 1, Integer.MAX_VALUE);
         }
+        length = Math.min(starts[values.length], limit);
     }
 
     @Override
     public int length() {
-        return starts[values.length];
+        return length;
     }
 
     @Override

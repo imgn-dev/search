@@ -22,6 +22,8 @@ public final class ByteOutput extends Output {
     private static final VarHandle INT = MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.LITTLE_ENDIAN);
     private static final VarHandle LONG = MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
 
+    private final int initialCapacity;
+    private final int maxSize;
     private byte[] bytes;
     private int size;
 
@@ -34,6 +36,17 @@ public final class ByteOutput extends Output {
     ///
     /// @param capacity the initial capacity
     public ByteOutput(int capacity) {
+        this(capacity, MAX_SIZE);
+    }
+
+    /// An empty output with room for `capacity` bytes that holds at most `maxSize`, for tests that reach the
+    /// limit without allocating [#MAX_SIZE] bytes.
+    ///
+    /// @param capacity the initial capacity
+    /// @param maxSize the largest size, at most [#MAX_SIZE]
+    public ByteOutput(int capacity, int maxSize) {
+        this.initialCapacity = capacity;
+        this.maxSize = maxSize;
         this.bytes = new byte[capacity];
     }
 
@@ -47,6 +60,25 @@ public final class ByteOutput extends Output {
     /// Forgets the bytes written, keeping the memory.
     public void reset() {
         size = 0;
+    }
+
+    /// Forgets the bytes written, and gives back the memory of an array grown beyond `maxCapacity` bytes, so that
+    /// a large value does not stay held: the array goes back to its initial capacity.
+    ///
+    /// @param maxCapacity the largest capacity kept
+    public void reset(int maxCapacity) {
+        size = 0;
+        if (bytes.length > maxCapacity) {
+            bytes = new byte[initialCapacity];
+        }
+    }
+
+    /// Makes room for `more` bytes, so that writing them cannot exceed the limit on the size.
+    ///
+    /// @param more the number of bytes
+    /// @throws IllegalStateException if the size would exceed the limit
+    public void reserve(int more) {
+        ensure(more);
     }
 
     /// The backing array; only the first [#size()] bytes are written.
@@ -126,6 +158,53 @@ public final class ByteOutput extends Output {
         size += length;
     }
 
+    /// Starts a string whose length is not known yet: its UTF-8 bytes follow, written by [#writeUtf8], and
+    /// [#endString] puts its length before them, so that it is framed as [#writeString] frames it, with the same
+    /// limit on the size.
+    ///
+    /// @return the offset of the string, for [#endString]
+    public int startString() {
+        // writeString checks the room for a length of any width before writing it.
+        ensure(Integer.BYTES + 1);
+        return size;
+    }
+
+    /// Writes characters as UTF-8, as [#writeString] encodes them: an unpaired surrogate, a high surrogate at the
+    /// end of the range included, becomes `?`.
+    ///
+    /// @param chars the characters
+    /// @param from the index of the first
+    /// @param to the index past the last
+    public void writeUtf8(char[] chars, int from, int to) {
+        if ((long) size + (long) (to - from) * Utf8.MAX_BYTES_PER_CHAR > bytes.length) {
+            // Only the exact size may hit the limit, as it does for a string encoded at once.
+            ensure(Utf8.length(chars, from, to));
+        }
+        size += Utf8.encode(chars, from, to, bytes, size);
+    }
+
+    /// Ends a string started by [#startString]: writes the length in bytes of what was written since, as
+    /// [#writeString] does, before it.
+    ///
+    /// @param start the offset [#startString] returned
+    public void endString(int start) {
+        var length = size - start;
+        var width = 1;
+        for (var v = length >>> PAYLOAD_BITS; v != 0; v >>>= PAYLOAD_BITS) {
+            width++;
+        }
+        ensure(width);
+        System.arraycopy(bytes, start, bytes, start + width, length);
+        var at = start;
+        var v = length;
+        while ((v & ~SEVEN_BITS) != 0) {
+            bytes[at++] = (byte) ((v & SEVEN_BITS) | CONTINUATION);
+            v >>>= PAYLOAD_BITS;
+        }
+        bytes[at] = (byte) v;
+        size += width;
+    }
+
     /// The CRC32C checksum of the bytes written.
     ///
     /// @return the checksum
@@ -158,8 +237,8 @@ public final class ByteOutput extends Output {
         if (needed <= bytes.length) {
             return;
         }
-        checkState(needed <= MAX_SIZE, "%s bytes exceed the limit of %s", needed, MAX_SIZE);
-        var capacity = Math.max(needed, Math.min((long) bytes.length * 2, MAX_SIZE));
+        checkState(needed <= maxSize, "%s bytes exceed the limit of %s", needed, maxSize);
+        var capacity = Math.max(needed, Math.min((long) bytes.length * 2, maxSize));
         bytes = Arrays.copyOf(bytes, (int) capacity);
     }
 }

@@ -198,9 +198,13 @@ final class Indexes {
     static String documentVersion(Document document) {
         return document.fields().stream()
                 .filter(field -> field.name().equals("version"))
+                .map(field -> switch (field) {
+                    case Document.Keyword keyword -> keyword.value();
+                    case Document.Text text -> text.value();
+                    case Document.TextSource _ -> throw new IllegalArgumentException("A version is never a source");
+                })
                 .findFirst()
-                .orElseThrow()
-                .value();
+                .orElseThrow();
     }
 
     /// The documents of the last commit of a file index, by key, with their versions. Checks every segment in full.

@@ -3,6 +3,8 @@ package be.imgn.search;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import be.imgn.gaia.core.io.CharSource;
+import java.io.StringReader;
 import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
@@ -87,5 +89,43 @@ class DocumentTest {
         builder.keyword("tags", "b");
 
         assertThat(document.fields()).hasSize(1);
+    }
+
+    @Test
+    void addsTextSources() {
+        CharSource content = () -> new StringReader("Le renard");
+        var document = Document.builder("1")
+                .text("title", content)
+                .text("title", content, Locale.of("fr", "BE"))
+                .build();
+
+        assertThat(document.fields())
+                .containsExactly(
+                        new Document.TextSource("title", content, null),
+                        new Document.TextSource("title", content, Locale.FRENCH));
+    }
+
+    @Test
+    void checksTextSources() {
+        CharSource content = () -> new StringReader("x");
+
+        assertThatThrownBy(() -> new Document.TextSource("title", content, Locale.ROOT))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(new Document.TextSource("title", content, Locale.of("nb")).language())
+                .isEqualTo(Locale.of("no"));
+        var builder = Document.builder("1");
+        assertThatThrownBy(() -> builder.text("title", content, Locale.ROOT))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(builder.build().fields()).isEmpty();
+    }
+
+    @Test
+    void neverReadsASourceItHolds() {
+        CharSource content = () -> {
+            throw new AssertionError("Read");
+        };
+
+        assertThat(Document.builder("1").text("title", content).build().fields())
+                .hasSize(1);
     }
 }

@@ -10,6 +10,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import be.imgn.gaia.core.io.CharSource;
+import be.imgn.search.Document;
 import be.imgn.search.internal.segment.SegmentMerger;
 import be.imgn.search.internal.segment.SegmentSink;
 import java.io.IOException;
@@ -245,5 +247,41 @@ class FailureTest {
         assertThatThrownBy(() -> writer.delete("z")).hasRootCauseMessage(cause);
         assertThatThrownBy(writer::refresh).hasRootCauseMessage(cause);
         assertThatThrownBy(writer::close).hasRootCauseMessage(cause);
+    }
+
+    @Test
+    void keepsTheFailureOfAnAddWhenPuttingItsBufferBackFailsTheWriter() throws IOException {
+        var first = Document.builder("a").text("title", "le renard").build();
+        // A budget the first document fits, which a delete then passes: putting back the buffer of the next add
+        // flushes it.
+        var indexer = new DocumentIndexer(SCHEMA);
+        var buffer = new DocumentBuffer();
+        indexer.analyze(first);
+        indexer.write("a", 0, buffer);
+        var probe = new IndexWriter(SCHEMA, Snapshot.EMPTY, IndexWriter.DEFAULT_BUDGET);
+        probe.add(first);
+        var budget = buffer.bytesUsed() + probe.deleteBytes() + 1;
+        probe.close();
+        var writer = new IndexWriter(SCHEMA, Snapshot.EMPTY, budget, EAGER, new SegmentWriting() {
+            @Override
+            public boolean flush(SegmentFlusher flusher, DocumentBuffer flushed, SegmentSink sink) {
+                throw new IllegalStateException("Flush failure");
+            }
+        });
+        writer.add(first);
+        writer.delete("z");
+        var broken = new IOException("Broken source");
+        CharSource source = () -> {
+            throw broken;
+        };
+
+        assertThatThrownBy(() ->
+                        writer.add(Document.builder("b").text("title", source).build()))
+                .isSameAs(broken);
+
+        assertThat(broken.getSuppressed())
+                .singleElement()
+                .satisfies(suppressed -> assertThat(suppressed).hasMessage("Flush failure"));
+        assertFailed(writer, "Flush failure");
     }
 }

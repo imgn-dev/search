@@ -154,12 +154,16 @@ public final class IndexWriter {
 
     /// Adds a document that the schema has checked, replacing any with the same key.
     ///
+    /// Putting the buffer back may flush one, even after the document failed: when that flush fails too, the
+    /// document's exception is thrown, with the flush's suppressed.
+    ///
     /// @param document the document
     /// @return the add's sequence number
     /// @throws IllegalStateException if the writer is closed or failed, or the index already holds
-    ///     `Integer.MAX_VALUE` documents; an exception from the analysis, such as a language analyzer's, leaves the
-    ///     writer as it was
-    /// @throws IOException if a segment cannot be written
+    ///     `Integer.MAX_VALUE` documents; an exception from the analysis, such as a language analyzer's or a
+    ///     source's, leaves the writer as it was
+    /// @throws IOException if a source of the document cannot be read, which leaves the writer as it was, or a
+    ///     segment cannot be written
     public long add(Document document) throws IOException {
         Worker worker;
         Epoch current;
@@ -177,19 +181,13 @@ public final class IndexWriter {
         } finally {
             lock.unlock();
         }
-        var added = false;
         long seq;
-        try {
+        try (var end = new AddEnd(worker, current)) {
             worker.indexer.analyze(document);
             seq = current.next.getAndIncrement();
             worker.indexer.write(document.key(), seq, worker.buffer);
             current.register(document.key(), seq);
-            added = true;
-        } finally {
-            if (!added) {
-                documents.decrementAndGet();
-            }
-            putBack(worker, current);
+            end.added = true;
         }
         return seq;
     }
@@ -1053,6 +1051,28 @@ public final class IndexWriter {
             } else {
                 deletes.merge(key, seq, Math::max);
             }
+        }
+    }
+
+    // The end of an add, which puts its worker back. As a resource, it keeps the failure of an add as the exception
+    // thrown, with a failure to put the worker back, from a flush that fails the writer, suppressed.
+    private final class AddEnd implements AutoCloseable {
+
+        private final Worker worker;
+        private final Epoch current;
+        private boolean added;
+
+        AddEnd(Worker worker, Epoch current) {
+            this.worker = worker;
+            this.current = current;
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (!added) {
+                documents.decrementAndGet();
+            }
+            putBack(worker, current);
         }
     }
 

@@ -33,8 +33,12 @@ public final class Writer implements AutoCloseable {
 
     /// Adds a document, replacing the document with the same key if there is one.
     ///
-    /// An exception from the analysis, such as one a language analyzer or detector throws, leaves the writer as
-    /// it was.
+    /// An exception from the analysis, such as one a language analyzer or detector throws, or an `IOException` a
+    /// [Document.TextSource] throws when it is opened or read, leaves the writer as it was: the document is not
+    /// added, and the writer stays open. The sources of the document are read during this call only, and closed
+    /// before it returns. An add may also write a segment to keep the writer within its memory budget, whether the
+    /// document was added or not; when that fails after the document failed, the writer is closed, and the
+    /// document's exception is thrown with that failure suppressed.
     ///
     /// @param document the document
     /// @throws NullPointerException if `document` is `null`
@@ -42,7 +46,8 @@ public final class Writer implements AutoCloseable {
     ///     another kind
     /// @throws IllegalStateException if the writer is closed or failed, or the index already holds
     ///     `Integer.MAX_VALUE` documents, deleted ones included
-    /// @throws IOException if the index cannot be written
+    /// @throws IOException if a source of the document cannot be read, which leaves the writer as it was, or the
+    ///     index cannot be written, which closes it
     public void add(Document document) throws IOException {
         requireNonNull(document, "document");
         checkOpen();

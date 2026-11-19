@@ -3,6 +3,7 @@ package be.imgn.search.internal.index;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.CharBuffer;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
 
@@ -77,5 +78,36 @@ class JoinedValuesTest {
 
         assertThat(text.toString()).isEqualTo("renards\n");
         assertThat(text.charAt(7)).isEqualTo('\n');
+    }
+
+    @Test
+    void readsCharBuffersAsStrings() {
+        var buffer = "xxle chatrenardsx".toCharArray();
+        var text = new JoinedValues(
+                new CharSequence[] {CharBuffer.wrap(buffer, 2, 7), "", CharBuffer.wrap(buffer, 9, 7), "a"});
+
+        assertThat(text.toString()).isEqualTo(JOINED);
+        for (var i = 0; i < JOINED.length(); i++) {
+            assertThat(text.charAt(i)).as("char %d", i).isEqualTo(JOINED.charAt(i));
+        }
+        for (var start = 0; start <= JOINED.length(); start++) {
+            for (var end = start; end <= JOINED.length(); end++) {
+                var chars = new char[end - start];
+                text.getChars(start, end, chars, 0);
+                assertThat(new String(chars)).isEqualTo(JOINED.substring(start, end));
+            }
+        }
+    }
+
+    @Test
+    void cutsTheTextAfterALimit() {
+        for (var limit = 0; limit <= JOINED.length() + 2; limit++) {
+            var text = new JoinedValues(VALUES, limit);
+            var expected = JOINED.substring(0, Math.min(limit, JOINED.length()));
+
+            assertThat(text.toString()).isEqualTo(expected);
+            assertThat(text.length()).isEqualTo(expected.length());
+            assertThatThrownBy(() -> text.charAt(expected.length())).isInstanceOf(IndexOutOfBoundsException.class);
+        }
     }
 }

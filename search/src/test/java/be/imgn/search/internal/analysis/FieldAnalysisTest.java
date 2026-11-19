@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import be.imgn.search.TermBuffer;
 import be.imgn.search.WordAnalyzer;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 class FieldAnalysisTest {
@@ -119,6 +121,39 @@ class FieldAnalysisTest {
         analysis.keyword("", sink);
 
         assertThat(sink.terms()).isEmpty();
+    }
+
+    @Test
+    void analysesAReaderIntoTheTermsOfTheWholeText() throws IOException {
+        var random = new Random(7);
+        for (var round = 0; round < 1000; round++) {
+            var text = RandomTexts.text(random, random.nextInt(800));
+            var blockSize = 3 + random.nextInt(40);
+            var removeAccents = random.nextBoolean();
+            var position = random.nextInt(1000);
+            var whole = new FieldAnalysis();
+            var wholeNeutral = new Recorder();
+            var wholeLanguage = new Recorder();
+            var streamed = new FieldAnalysis(blockSize);
+            var streamedNeutral = new Recorder();
+            var streamedLanguage = new Recorder();
+            var read = new StringBuilder();
+
+            var next = whole.text(text, position, removeAccents, FRENCH, wholeNeutral, wholeLanguage);
+            var streamedNext = streamed.text(
+                    RandomTexts.choppy(text, 1 + random.nextInt(blockSize)),
+                    position,
+                    removeAccents,
+                    FRENCH,
+                    streamedNeutral,
+                    streamedLanguage,
+                    (chars, from, to) -> read.append(chars, from, to - from));
+
+            assertThat(streamedNeutral.terms()).as(text).isEqualTo(wholeNeutral.terms());
+            assertThat(streamedLanguage.terms()).as(text).isEqualTo(wholeLanguage.terms());
+            assertThat(streamedNext).isEqualTo(next);
+            assertThat(read.toString()).isEqualTo(text);
+        }
     }
 
     @Test

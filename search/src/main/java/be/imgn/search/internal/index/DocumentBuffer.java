@@ -16,17 +16,29 @@ final class DocumentBuffer {
 
     private static final int INITIAL_DOCUMENTS = 64;
     private static final long OBJECT_OVERHEAD = 64;
+    private static final int INITIAL_STORED_BYTES = 256;
 
     private final ByteBlockPool bytes = new ByteBlockPool();
     private final IntBlockPool ints = new IntBlockPool();
     private final Map<String, FieldBuffer> fields = new HashMap<>();
     private final BitSet deleted = new BitSet();
-    private final ByteOutput stored = new ByteOutput();
+    private final ByteOutput stored;
     private String[] keys = new String[INITIAL_DOCUMENTS];
     private long[] seqs = new long[INITIAL_DOCUMENTS];
     private int[] storedEnds = new int[INITIAL_DOCUMENTS];
     private int docCount;
     private long keyBytes;
+
+    /// An empty buffer.
+    DocumentBuffer() {
+        this(ByteOutput.MAX_SIZE);
+    }
+
+    /// An empty buffer whose stored records take at most `storedLimit` bytes, for tests that reach the limit
+    /// without allocating [ByteOutput#MAX_SIZE] bytes.
+    DocumentBuffer(int storedLimit) {
+        stored = new ByteOutput(INITIAL_STORED_BYTES, storedLimit);
+    }
 
     int docCount() {
         return docCount;
@@ -95,6 +107,15 @@ final class DocumentBuffer {
             fields.put(name, field);
         }
         return field;
+    }
+
+    /// Makes room for a stored record, so that a document can be checked against the limit of the stored records
+    /// before it changes the buffer.
+    ///
+    /// @param bytes the size of the record
+    /// @throws IllegalStateException if the stored records would exceed their limit
+    void reserveStored(int bytes) {
+        stored.reserve(bytes);
     }
 
     /// Sets the stored record of the last document started.

@@ -3,6 +3,7 @@ package be.imgn.search;
 import static be.imgn.gaia.core.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
+import be.imgn.gaia.core.io.CharSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -70,11 +71,6 @@ public record Document(String key, @Nullable Locale language, List<Field> fields
         ///
         /// @return the name
         String name();
-
-        /// The value.
-        ///
-        /// @return the value
-        String value();
     }
 
     /// A value of a text field, split into words and analysed in its language.
@@ -92,6 +88,35 @@ public record Document(String key, @Nullable Locale language, List<Field> fields
         public Text {
             requireNonNull(name, "name");
             requireNonNull(value, "value");
+            language = Languages.normalizeNullable(language);
+        }
+    }
+
+    /// A value of a text field read from a source of characters, such as a file: it gives the same terms as a
+    /// [Text] value of the same content, and the same stored value when the field is stored. It is analysed as it
+    /// is read, a block at a time, so the writer never holds the whole text, except as the UTF-8 of the stored
+    /// value when the field is stored.
+    ///
+    /// The source is read only while [Writer#add] runs, and not kept: it is read once to its end, or opened twice
+    /// when the document's language is detected and the source reaches into the text the detector reads: the first
+    /// 16,384 chars of the document's values without a language, read before any value is indexed, as for [Text]
+    /// values. It must give the same characters each time it is opened: when it does not, the language is detected
+    /// from the first opening and the value indexed from the second.
+    ///
+    /// @param name the field's name
+    /// @param content the text
+    /// @param language the language of this value, or `null` for the document's
+    /// @since 0.1.0
+    public record TextSource(
+            String name, CharSource content, @Nullable Locale language) implements Field {
+
+        /// Checks the value and normalizes its language.
+        ///
+        /// @throws NullPointerException if `name` or `content` is `null`
+        /// @throws IllegalArgumentException if `language` has no language subtag
+        public TextSource {
+            requireNonNull(name, "name");
+            requireNonNull(content, "content");
             language = Languages.normalizeNullable(language);
         }
     }
@@ -160,6 +185,33 @@ public record Document(String key, @Nullable Locale language, List<Field> fields
         public Builder text(String name, String value, Locale language) {
             requireNonNull(language, "language");
             fields.add(new Text(name, value, language));
+            return this;
+        }
+
+        /// Adds a value read from a source to a text field, in the document's language. See [TextSource] for when
+        /// the source is read.
+        ///
+        /// @param name the field's name
+        /// @param content the text
+        /// @return this builder
+        /// @throws NullPointerException if an argument is `null`
+        public Builder text(String name, CharSource content) {
+            fields.add(new TextSource(name, content, null));
+            return this;
+        }
+
+        /// Adds a value read from a source to a text field, in its own language. See [TextSource] for when the
+        /// source is read.
+        ///
+        /// @param name the field's name
+        /// @param content the text
+        /// @param language the value's language; only its language subtag is kept
+        /// @return this builder
+        /// @throws NullPointerException if an argument is `null`
+        /// @throws IllegalArgumentException if `language` has no language subtag
+        public Builder text(String name, CharSource content, Locale language) {
+            requireNonNull(language, "language");
+            fields.add(new TextSource(name, content, language));
             return this;
         }
 

@@ -50,12 +50,22 @@ public record StoredRecord(@Nullable String language, List<Value> values) {
     /// @param language the value's own language when `languageKind` is [#OWN]
     public static void writeValue(
             ByteOutput out, int field, String value, int languageKind, @Nullable String language) {
+        writeValueStart(out, field, languageKind, language);
+        out.writeString(value);
+    }
+
+    /// Writes a value of a record but its text, which the caller writes next, as a string.
+    ///
+    /// @param out the receiver
+    /// @param field the index of the value's field in the segment's stored fields
+    /// @param languageKind [#INHERITED], [#OWN] or [#NONE]
+    /// @param language the value's own language when `languageKind` is [#OWN]
+    public static void writeValueStart(ByteOutput out, int field, int languageKind, @Nullable String language) {
         out.writeVInt(field);
         out.writeByte(languageKind);
         if (languageKind == OWN && language != null) {
             out.writeString(language);
         }
-        out.writeString(value);
     }
 
     static StoredRecord read(DataInput in, List<String> fields) {

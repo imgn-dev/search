@@ -73,7 +73,8 @@ final class GeneratedText {
         return documents;
     }
 
-    private String text(int words) {
+    /// A text of `words` words, each followed by a space.
+    String text(int words) {
         var text = new StringBuilder();
         for (var i = 0; i < words; i++) {
             var found = Arrays.binarySearch(cumulative, random.nextDouble());

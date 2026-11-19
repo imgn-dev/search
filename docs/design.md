@@ -83,6 +83,14 @@ The core's tokenizer is written by hand for the Latin, Greek and Cyrillic script
 - A word longer than 255 characters, such as an encoded blob, is skipped.
 - Runs of other scripts are split the same way, which is crude but harmless.
 
+A value read from a source (see [Documents](#documents)) is tokenized as it is read, without being held whole:
+the tokenizer reads 8,192 chars at a time into a buffer it reuses, and splits each block but its last 2 chars,
+which it carries over to the next one, since deciding on a char may need the code point after it: the one after
+an apostrophe, or the low surrogate after a high one. The current word carries over as well, so a source gives
+the same tokens, at the same positions, as the same text given as a `String`; the tests check it on random texts
+cut into blocks as small as 3 chars. The chars of each block, once split, go on to the stored value when the field
+is stored.
+
 ### Normalization
 
 Each token is:
@@ -153,6 +161,13 @@ public interface LanguageDetector {
 - A language given by the caller always wins. The detector runs once per document, over the text values that
   have no language when the document has none either; its result becomes the document's language. Values are
   not detected one by one: a title of a few words is too short to detect reliably.
+- The detector reads the start of the document's values without a language: their first 16,384 chars, in field
+  order, each value followed by a line feed, through a view that reads them where they are rather than copying
+  them. The limit holds for the document as a whole, so a value gives the same text to the detector as a `Text`
+  or as a `TextSource`, and detecting a large document costs a bounded read. A source that reaches into those
+  chars is opened for them before any value is indexed, then opened again to be indexed; any other source is
+  opened once: one past those chars, one with a language, or one of a document that is not detected. The chars
+  read from sources are kept in one buffer of 16,384 chars, at their place in the detected text.
 - Below the schema's confidence threshold, the document gets no language.
 - Without a detector in the schema, only the languages given by the caller are used.
 - `search-langdetect` provides our detector. Another implementation, such as one around OpenNLP's
@@ -296,10 +311,37 @@ The input and the retrieved document are two types: a retrieved document holds o
 fetching it, changing it and adding it again would silently lose the others.
 
 A `Document` is what the writer indexes: an immutable record of a `String` key, unique in the index, a
-`@Nullable Locale` language, and an ordered list of fields, a sealed `Field` with two records,
-`Text(String name, String value, @Nullable Locale language)` and `Keyword(String name, String value)`. It is not
-a map: a field may appear several times, and the order of its values is kept. `Document.builder(key)` builds
-one; its `language` methods take a `Locale`, and leaving them out leaves the language `null`.
+`@Nullable Locale` language, and an ordered list of fields, a sealed `Field` with three records, which share only
+their `name()`: `Text(String name, String value, @Nullable Locale language)`,
+`TextSource(String name, CharSource content, @Nullable Locale language)` and `Keyword(String name, String value)`.
+It is not a map: a field may appear several times, and the order of its values is kept. `Document.builder(key)`
+builds one; its `language` methods take a `Locale`, and leaving them out leaves the language `null`.
+
+A `TextSource` is a text value read from gaia's `CharSource`, such as a file, so that a large text is never held
+whole: it gives the same terms, positions, norms and scores as a `Text` of the same content, and the same stored
+value. The builder's `text` methods take a `String` or a `CharSource`, so `search` requires gaia-core
+transitively. A `Text` is analysed straight from its `String`, never through a reader.
+
+- The source is read only while `add` runs, and never kept: it is opened with `openStream()` and read to its
+  end, or opened twice when the document's language is detected and the source reaches into the 16,384 chars
+  the detector reads (see [Language detection](#language-detection)). Every reader is closed before `add`
+  returns, whatever happens.
+- It must give the same characters each time it is opened. When it does not, the language is detected from what
+  the first opening gave, and the value indexed and stored from what the second gave; nothing fails.
+- An `IOException` from the source, on opening or reading, propagates out of `add` as is: the document is not
+  added and the writer stays open, as after an exception from a language analyzer or detector, since the
+  document is analysed into the writer's scratch before anything reaches its buffers. If putting the scratch's
+  buffer back then flushes a buffer and that fails, the writer fails as after any failed flush: the source's
+  exception is still the one thrown, with the flush's failure suppressed in it.
+- A stored value is encoded to UTF-8 into the stored record while it is tokenized, then its length is put in
+  front of it, so the record holds the same bytes as for a `Text`; an unpaired surrogate becomes `?`, as
+  `String.getBytes` makes it. The value still takes its full UTF-8 size in the writer's buffer, bounded like any
+  stored record, for a `Text` as for a `TextSource`: a record beyond 1 GiB, or one that would take the stored
+  records of the buffer beyond 1 GiB, throws `IllegalStateException` from `add`. The buffer has room made for
+  the record before the document changes it, so the document is not added and the writer stays open.
+- The scratch where a document is analysed, its terms and stored record, is reused from one document to the
+  next; a buffer of it grown beyond 4 MiB by a large document goes back to its initial size once the document is
+  added or has failed, so a writer does not keep the memory of the largest document it indexed.
 
 `Optional` is used only as a return type, never as a record component, field or parameter: an absent language
 is `null` in the records, and a `StoredDocument` method returns `Optional` where nothing may be found.
@@ -435,8 +477,9 @@ operations on one key end as they were ordered.
   3. release the previous manifest's files.
 - `close()` commits, stops the merges and releases the writer.
 
-After an `IOException` the writer is closed: the index stays at its last commit, and a new writer can be
-taken. A commit that fails once its manifest is renamed may leave the index at that commit: the next
+After an `IOException` writing the index the writer is closed: the index stays at its last commit, and a new
+writer can be taken. An `IOException` from a document's `TextSource` is not one: `add` throws it before the
+document reaches the writer's buffers, and the writer stays open (see [Documents](#documents)). A commit that fails once its manifest is renamed may leave the index at that commit: the next
 writer reads the newest manifest again. A writer that failed never renames a manifest, even from a commit
 already in progress on another thread, and a new writer waits for such a commit to end before it cleans the
 directory up. Opening a file index reads the newest manifest; a bad checksum there throws, rather than silently
@@ -582,6 +625,10 @@ Parsing needs the schema, for the default fields and the field kinds:
 - Comparisons with other engines, Lucene first, are run outside the repository.
 - Hot paths allocate nothing per token or per posting: analysis pushes into a sink, iterators decode into
   reusable arrays, and a search call reuses its iterators across segments.
+- A `TextSource` is read in blocks into a buffer the tokenizer reuses, and a stored one is encoded straight into
+  the stored record, so adding one allocates nothing per block and no copy of the text: about 1 MB less than
+  a stored `Text` of 1 MB, which `String.getBytes` copies whole (5.5 ± 0.3 MB against 6.6 ± 0.1 MB per add in
+  `LargeDocumentBenchmark`, where both take about 15 ms).
 - Decoding reads whole blocks from the `MemorySegment` and unpacks them in plain loops the JIT can vectorize.
 - Each index has one segment class, heap or mapped, so the decoding loops stay monomorphic.
 - The block index of each term dictionary is loaded on the heap when a segment opens, so a term lookup is a
@@ -608,7 +655,7 @@ try (var index = Index.open(path, schema)) {              // or Index.inMemory(s
                 .language(Locale.FRENCH)
                 .text("title", "Le renard")                // French, from the document
                 .text("title", "The fox", Locale.ENGLISH)  // this value only
-                .text("body", "...")
+                .text("body", CharSource.of(file, UTF_8))  // read while add runs, never whole
                 .keyword("tags", "animal")
                 .keyword("tags", "forêt")
                 .build());
@@ -643,6 +690,12 @@ try (var index = Index.open(path, schema)) {              // or Index.inMemory(s
   searches run; the final index holds exactly the last operation of each key. Searches from several threads on
   one searcher return what a single thread does.
 - Top-k: block-max and MaxScore return the same hits as exhaustive scoring.
+- Text sources: random documents given as `TextSource`s, read a few chars at a time, flush to the same segment
+  bytes, stored records included, as when given as `Text`s, and score the same on both storages; the tokenizer
+  gives the same words for a reader cut into blocks of 3 chars and up; a value gives the detector the same text
+  as a `Text` or a `TextSource`, and a source is opened twice only when it reaches into it; one that fails on
+  opening or reading, on either opening, leaves the writer as it was; a large document leaves no large scratch
+  behind, and one that the buffer's stored records have no room for leaves the buffer as it was.
 - Crash tests: file operations go through an internal layer that a test replaces with one that fails, or
   simulates a power cut that loses whatever was not forced, or keeps only the renames among the changes to the
   directory since its last force, at every write, `force`, rename and delete. After each, reopening gives

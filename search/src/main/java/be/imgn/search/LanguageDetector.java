@@ -8,8 +8,9 @@ import java.util.Locale;
 
 /// Guesses the language of a document whose language the caller did not give.
 ///
-/// The index runs it once per document, over the text values that have no language, and keeps the best guess
-/// when its probability reaches the schema's threshold.
+/// The index runs it once per document, over the start of the text values that have no language: their first
+/// 16,384 chars, the values each followed by a line feed. It keeps the best guess when its probability reaches the
+/// schema's threshold.
 ///
 /// @since 0.1.0
 @FunctionalInterface
