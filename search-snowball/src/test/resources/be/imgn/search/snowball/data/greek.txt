@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/greek (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+αμφιλεγόμενους αμφιλεγομεν
+βιαστεί βιαστ
+εκπροσωπήσουν εκπροσωπ
+ιερογλυφικής ιερογλυφικ
+μασκαρπόνε μασκαρπον
+παρηκμασμένη παρηκμασμεν
+σπεύδει σπευδ
+υψίπεδο υψιπεδ

@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/italian (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+anziane anzian
+codice codic
+dresda dresd
+incomodata incomod
+multiazioni multiazion
+pubblicitaria pubblicitar
+sciopererà scioper
+togliesse togliess

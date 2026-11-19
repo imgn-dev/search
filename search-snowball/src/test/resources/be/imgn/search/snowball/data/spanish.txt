@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/spanish (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+anoche anoch
+cláusula clausul
+desistirse desist
+faltar falt
+irritado irrit
+oscuras oscur
+refiera ref
+toneladas tonel

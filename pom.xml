@@ -36,6 +36,7 @@
 
   <modules>
     <module>search</module>
+    <module>search-snowball</module>
     <!-- Not published: the JMH benchmarks. -->
     <module>search-benchmarks</module>
   </modules>

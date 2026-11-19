@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/dutch (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+baggerdepot bagrdepot
+dominostenen dominosten
+gestookt stook
+koepelden koepel
+omschrijvingen omschrijf
+rekeningen rekeen
+treinwagons treinwagon
+warmen warm

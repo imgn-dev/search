@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/ukrainian (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+брока брок
+гостем гост
+звільнений звільнен
+магнати магн
+осередком осередк
+пропрацювала пропрац
+спорудили споруд
+цивілізацією цивіліз

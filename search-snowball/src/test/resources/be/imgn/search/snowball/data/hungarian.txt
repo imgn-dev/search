@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/hungarian (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+aluliak aluli
+biztonságnak biztonság
+kegyeiért kegy
+kiépíteni kiépíten
+kölcsönadtak kölcsönadt
+locsolták locsolta
+meglehet megleh
+másokban más

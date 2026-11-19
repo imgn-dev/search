@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>be.imgn.search</groupId>
+    <artifactId>search-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>search-snowball</artifactId>
+
+  <name>Search Snowball</name>
+  <description>The European language analyzers of the search library: elision and the Snowball stemmers.</description>
+
+  <properties>
+    <!-- The Snowball release whose generated Java is compiled in, downloaded from the Snowball website, which
+         publishes no Maven artifact. Bump the version and its SHA-256 together; the version is also part of
+         each analyzer's identifier, so indexes written with another release refuse to open.
+         The build warns when a newer release exists; -Dsnowball.check.skip=true skips that check. -->
+    <snowball.version>3.2.0</snowball.version>
+    <snowball.sha256>fef7cdd5e0b54fad434a8cd9257017fe8661e2e633d902f56681e9eec19164ab</snowball.sha256>
+    <snowball.check.skip>false</snowball.check.skip>
+    <snowball.url>https://raw.githubusercontent.com/snowballstem/snowball-website/master/dist/libstemmer_java-${snowball.version}.tar.gz</snowball.url>
+    <!-- Where the release is downloaded and unpacked, and where its sources and licence are generated. -->
+    <snowball.work>${project.build.directory}/snowball</snowball.work>
+    <snowball.sources>${project.build.directory}/generated-sources/snowball</snowball.sources>
+    <snowball.resources>${project.build.directory}/generated-resources/snowball</snowball.resources>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>be.imgn.search</groupId>
+      <artifactId>search</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jspecify</groupId>
+      <artifactId>jspecify</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <resources>
+      <!-- Filtered for the Snowball version in snowball.properties. -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
+
+    <plugins>
+      <!-- Downloads the Snowball release, verifies it, and copies the runtime and the European stemmers into an
+           internal package, so that they never clash with another copy of org.tartarus.snowball, such as
+           Lucene's. The sources are regenerated only when the release changes. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.2.0</version>
+        <executions>
+          <execution>
+            <id>generate-snowball-sources</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <configuration>
+              <target xmlns:if="ant:if">
+                <mkdir dir="${snowball.work}"/>
+                <get src="${snowball.url}" dest="${snowball.work}/libstemmer_java-${snowball.version}.tar.gz"
+                     skipexisting="true"/>
+                <fail message="libstemmer_java-${snowball.version}.tar.gz does not have the SHA-256 ${snowball.sha256}: delete ${snowball.work} to download it again, or fix snowball.sha256.">
+                  <condition>
+                    <not>
+                      <checksum file="${snowball.work}/libstemmer_java-${snowball.version}.tar.gz"
+                                algorithm="SHA-256" property="${snowball.sha256}"/>
+                    </not>
+                  </condition>
+                </fail>
+                <condition property="snowball.stale">
+                  <not>
+                    <and>
+                      <available file="${snowball.work}/generated-${snowball.version}"/>
+                      <available file="${snowball.sources}" type="dir"/>
+                      <available file="${snowball.resources}" type="dir"/>
+                    </and>
+                  </not>
+                </condition>
+                <sequential if:set="snowball.stale">
+                  <delete dir="${snowball.sources}"/>
+                  <delete dir="${snowball.resources}"/>
+                  <delete dir="${snowball.work}/libstemmer_java-${snowball.version}"/>
+                  <delete>
+                    <fileset dir="${snowball.work}" includes="generated-*"/>
+                  </delete>
+                  <untar src="${snowball.work}/libstemmer_java-${snowball.version}.tar.gz" dest="${snowball.work}"
+                         compression="gzip"/>
+                  <copy todir="${snowball.sources}/be/imgn/search/snowball/internal" encoding="UTF-8"
+                        outputencoding="UTF-8">
+                    <fileset dir="${snowball.work}/libstemmer_java-${snowball.version}/java/org/tartarus/snowball">
+                      <include name="Among.java"/>
+                      <include name="CharArraySequence.java"/>
+                      <include name="SnowballProgram.java"/>
+                      <include name="SnowballStemmer.java"/>
+                      <include name="ext/basqueStemmer.java"/>
+                      <include name="ext/catalanStemmer.java"/>
+                      <include name="ext/czechStemmer.java"/>
+                      <include name="ext/danishStemmer.java"/>
+                      <include name="ext/dutchStemmer.java"/>
+                      <include name="ext/englishStemmer.java"/>
+                      <include name="ext/esperantoStemmer.java"/>
+                      <include name="ext/estonianStemmer.java"/>
+                      <include name="ext/finnishStemmer.java"/>
+                      <include name="ext/frenchStemmer.java"/>
+                      <include name="ext/germanStemmer.java"/>
+                      <include name="ext/greekStemmer.java"/>
+                      <include name="ext/hungarianStemmer.java"/>
+                      <include name="ext/irishStemmer.java"/>
+                      <include name="ext/italianStemmer.java"/>
+                      <include name="ext/lithuanianStemmer.java"/>
+                      <include name="ext/norwegianStemmer.java"/>
+                      <include name="ext/polishStemmer.java"/>
+                      <include name="ext/portugueseStemmer.java"/>
+                      <include name="ext/romanianStemmer.java"/>
+                      <include name="ext/russianStemmer.java"/>
+                      <include name="ext/serbianStemmer.java"/>
+                      <include name="ext/spanishStemmer.java"/>
+                      <include name="ext/swedishStemmer.java"/>
+                      <include name="ext/ukrainianStemmer.java"/>
+                    </fileset>
+                    <filterchain>
+                      <replacestring from="org.tartarus.snowball" to="be.imgn.search.snowball.internal"/>
+                    </filterchain>
+                  </copy>
+                  <copy file="${snowball.work}/libstemmer_java-${snowball.version}/COPYING"
+                        tofile="${snowball.resources}/META-INF/SNOWBALL-COPYING"/>
+                  <touch file="${snowball.work}/generated-${snowball.version}"/>
+                </sequential>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.8.0</version>
+        <executions>
+          <execution>
+            <id>add-snowball-sources</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>${snowball.sources}</source>
+              </sources>
+            </configuration>
+          </execution>
+          <execution>
+            <id>add-snowball-resources</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>add-resource</goal>
+            </goals>
+            <configuration>
+              <resources>
+                <resource>
+                  <directory>${snowball.resources}</directory>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- The tests check the identifiers against the version the build pins. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <snowball.version>${snowball.version}</snowball.version>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+
+      <!-- javadoc takes the generated sources file by file, which would document the internal package although
+           the module does not export it. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <sourceFileExcludes>
+            <sourceFileExclude>be/imgn/search/snowball/internal/**</sourceFileExclude>
+          </sourceFileExcludes>
+        </configuration>
+      </plugin>
+
+      <!-- Warns when Snowball has a newer release than snowball.version; never fails the build. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>check-snowball-release</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <skip>${snowball.check.skip}</skip>
+              <executable>${java.home}/bin/java</executable>
+              <arguments>
+                <argument>${project.basedir}/src/build/java/SnowballLatest.java</argument>
+                <argument>${snowball.version}</argument>
+                <!-- Within a longer string: the expression alone gives exec a Boolean, which it cannot take. -->
+                <argument>--offline=${settings.offline}</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

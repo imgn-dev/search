@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/polish (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+charakteryzatorka charakteryzatork
+hodowca hodowc
+miejscewezwano miejscewezwan
+orzechowcach orzechowc
+przedsiębiorstwach przedsiębiorstw
+spekulacjach spekulacj
+wdzięczność wdzięcznośc
+zawodniczkę zawodniczk

@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/romanian (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+artelor arte
+condoleanţe condoleanț
+emergente emergent
+improvizeze improviz
+modelului model
+polițiști polițist
+semasiologi semasiolog
+vopsite vopsit

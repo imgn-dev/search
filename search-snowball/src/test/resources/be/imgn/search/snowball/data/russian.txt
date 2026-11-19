@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/russian (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+верховскому верховск
+дружескими дружеск
+косноязычные косноязычн
+неразгаданного неразгада
+победой побед
+произвела произвел
+смущает смуща
+устройству устройств

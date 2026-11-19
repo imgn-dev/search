@@ -1,0 +1,11 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/estonian (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+ballett ballet
+investeerimine investeerimise
+koodide koodi
+maanteest maantee
+pandeemiaks pandeemia
+saaksime saa
+teooriast teooria
+väest väes
+jääb jääma

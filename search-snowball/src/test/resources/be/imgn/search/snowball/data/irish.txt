@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/irish (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+bhfoghlaime foghlaime
+chiseanna ciseanna
+dheinithí deinithí
+fhothithe fothithe
+ghrianbhuí grianbhuí
+mhórghruaim mórghruaim
+róthábhacht róthábh
+thíoch tíoch

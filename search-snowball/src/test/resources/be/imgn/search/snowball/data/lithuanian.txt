@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/lithuanian (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+atsirasti atsiras
+faraonams faraon
+kapituliacijos kapituliacij
+mikroskopinis mikroskopin
+pasipylė pasip
+reinkarnaciją reinkarnacij
+suteikė suteik
+ypatingosios ypat

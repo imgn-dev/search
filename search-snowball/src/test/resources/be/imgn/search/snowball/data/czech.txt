@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/czech (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+cisterciácký cisterciáck
+interpretace interpretak
+molekulárního molekulárn
+oranžovo oranž
+prázdninové prázdn
+smrtelné smrteln
+vepřové vepř
+zviditelnění zviditelněn

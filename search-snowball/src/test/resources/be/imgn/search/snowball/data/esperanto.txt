@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/esperanto (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+artaĵo artaĵ
+ekloĝas ekloĝ
+hararo harar
+kontraŭargumentojn kontraŭargument
+mikveo mikve
+plumnomoj plumnom
+senkostaj senkost
+validos valid

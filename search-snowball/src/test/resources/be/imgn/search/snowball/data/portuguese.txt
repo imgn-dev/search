@@ -1,0 +1,10 @@
+# Words and their stems from https://github.com/snowballstem/snowball-data/tree/master/portuguese (voc.txt, output.txt),
+# by the Snowball project; licence: that directory's COPYING, else the repository's COPYING (BSD-3-Clause).
+antipessoais antipesso
+cíclico cíclic
+desistiria desist
+exigida exig
+instalação instal
+objetiva objet
+rebaixando rebaix
+thomé thom
