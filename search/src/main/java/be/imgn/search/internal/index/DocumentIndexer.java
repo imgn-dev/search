@@ -3,6 +3,7 @@ package be.imgn.search.internal.index;
 import be.imgn.search.Accents;
 import be.imgn.search.Document;
 import be.imgn.search.LanguageAnalyzer;
+import be.imgn.search.LanguageDetector;
 import be.imgn.search.Positions;
 import be.imgn.search.Schema;
 import be.imgn.search.Stored;
@@ -221,24 +222,37 @@ final class DocumentIndexer {
     }
 
     private @Nullable Locale documentLanguage(Document document) {
-        if (document.language() != null) {
-            return document.language();
-        }
-        var detector = schema.languageDetector();
-        var text = new StringBuilder();
-        for (var field : document.fields()) {
-            if (field instanceof Document.Text(var _, var value, var valueLanguage) && valueLanguage == null) {
-                text.append(value).append('\n');
+        var language = document.language();
+        if (language == null) {
+            var detector = schema.languageDetector();
+            if (detector.isPresent()) {
+                language = detectedLanguage(detector.get(), document);
             }
         }
-        if (detector.isEmpty() || text.isEmpty()) {
+        return language;
+    }
+
+    private @Nullable Locale detectedLanguage(LanguageDetector detector, Document document) {
+        var count = 0;
+        for (var field : document.fields()) {
+            if (field instanceof Document.Text(var _, var _, var valueLanguage) && valueLanguage == null) {
+                count++;
+            }
+        }
+        if (count == 0) {
             return null;
         }
-        var guesses = detector.get().detect(text);
-        if (guesses.isEmpty() || guesses.getFirst().probability() < schema.languageThreshold()) {
-            return null;
+        var values = new String[count];
+        var i = 0;
+        for (var field : document.fields()) {
+            if (field instanceof Document.Text(var _, var value, var valueLanguage) && valueLanguage == null) {
+                values[i++] = value;
+            }
         }
-        return guesses.getFirst().language();
+        var guesses = detector.detect(new JoinedValues(values));
+        return guesses.isEmpty() || guesses.getFirst().probability() < schema.languageThreshold()
+                ? null
+                : guesses.getFirst().language();
     }
 
     private int storedCount(Document document) {
